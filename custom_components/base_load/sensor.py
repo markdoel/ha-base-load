@@ -14,6 +14,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import UnitOfPower
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
@@ -188,6 +189,16 @@ class BaseLoadCauseSensor(BaseLoadEntity, SensorEntity):
         return _TEXT.get(language, _TEXT["en"])
 
     def _name_of(self, entity_id: str) -> str:
+        """Device name if the sensor belongs to one, else the entity name.
+
+        Power sensors of plugs are usually called "<device> Power" or worse,
+        the device name ("Heizung") reads much better in a sentence.
+        """
+        entry = er.async_get(self.hass).async_get(entity_id)
+        if entry is not None and entry.device_id is not None:
+            device = dr.async_get(self.hass).async_get(entry.device_id)
+            if device is not None and (name := device.name_by_user or device.name):
+                return name
         state = self.hass.states.get(entity_id)
         return state.name if state is not None else entity_id
 
