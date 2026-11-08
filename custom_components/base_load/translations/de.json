@@ -14,7 +14,8 @@
           "lookback_weeks": "Lernzeitraum (Wochen)",
           "sensitivity": "Empfindlichkeit (robuste Sigma)",
           "min_deviation": "Mindestabweichung",
-          "excluded_threshold": "Schwelle für herausgerechnete Verbraucher"
+          "excluded_threshold": "Schwelle für herausgerechnete Verbraucher",
+          "candidate_sensors": "Geräte für die Ursachenanalyse"
         },
         "data_description": {
           "grid_sensor": "Netzbezug in W. Negative Werte bedeuten Einspeisung.",
@@ -22,7 +23,8 @@
           "excluded_sensors": "Stunden, in denen einer dieser Verbraucher über der Schwelle liegt, werden ignoriert.",
           "night_start": "Volle Stunde, Ortszeit. Das Fenster darf über Mitternacht gehen.",
           "sensitivity": "Kleinere Werte melden mehr Abweichungen. 3 ist ein guter Start.",
-          "min_deviation": "Kleinere Abweichungen werden nie gemeldet."
+          "min_deviation": "Kleinere Abweichungen werden nie gemeldet.",
+          "candidate_sensors": "Gemessene Geräte (Steckdosen, Zwischenzähler), die bei einer Abweichung geprüft werden. Keinen Gruppensensor zusammen mit seinen Mitgliedern wählen."
         }
       }
     },
@@ -47,7 +49,11 @@
           "lookback_weeks": "Lernzeitraum (Wochen)",
           "sensitivity": "Empfindlichkeit (robuste Sigma)",
           "min_deviation": "Mindestabweichung",
-          "excluded_threshold": "Schwelle für herausgerechnete Verbraucher"
+          "excluded_threshold": "Schwelle für herausgerechnete Verbraucher",
+          "candidate_sensors": "Geräte für die Ursachenanalyse"
+        },
+        "data_description": {
+          "candidate_sensors": "Gemessene Geräte (Steckdosen, Zwischenzähler), die bei einer Abweichung geprüft werden. Keinen Gruppensensor zusammen mit seinen Mitgliedern wählen."
         }
       }
     },
@@ -132,6 +138,60 @@
               "high": "Höher als üblich",
               "low": "Niedriger als üblich"
             }
+          }
+        }
+      },
+      "cause": {
+        "name": "Vermutete Ursache",
+        "state_attributes": {
+          "date": {
+            "name": "Datum"
+          },
+          "total_deviation": {
+            "name": "Gesamtabweichung"
+          },
+          "causes": {
+            "name": "Ursachen"
+          },
+          "unexplained": {
+            "name": "Nicht erklärt"
+          },
+          "pattern": {
+            "name": "Verlauf",
+            "state": {
+              "constant": "Dauerhaft",
+              "intermittent": "Zeitweise"
+            }
+          },
+          "onset": {
+            "name": "Beginn"
+          }
+        }
+      },
+      "last_night_cause": {
+        "name": "Vermutete Ursache letzte Nacht",
+        "state_attributes": {
+          "date": {
+            "name": "Datum"
+          },
+          "total_deviation": {
+            "name": "Gesamtabweichung"
+          },
+          "causes": {
+            "name": "Ursachen"
+          },
+          "unexplained": {
+            "name": "Nicht erklärt"
+          },
+          "pattern": {
+            "name": "Verlauf",
+            "state": {
+              "constant": "Dauerhaft",
+              "intermittent": "Zeitweise"
+            }
+          },
+          "onset": {
+            "name": "Beginn"
           }
         }
       }

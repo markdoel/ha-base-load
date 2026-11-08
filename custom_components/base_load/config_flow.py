@@ -12,6 +12,7 @@ from homeassistant.helpers import selector
 import voluptuous as vol
 
 from .const import (
+    CONF_CANDIDATE_SENSORS,
     CONF_EXCLUDED_SENSORS,
     CONF_EXCLUDED_THRESHOLD,
     CONF_FEED_IN_SENSORS,
@@ -71,6 +72,13 @@ def _sources_schema(defaults: dict[str, Any]) -> dict[vol.Marker, Any]:
                 domain="sensor", device_class=SensorDeviceClass.POWER, multiple=True
             )
         ),
+        vol.Optional(
+            CONF_CANDIDATE_SENSORS, default=defaults.get(CONF_CANDIDATE_SENSORS, [])
+        ): selector.EntitySelector(
+            selector.EntitySelectorConfig(
+                domain="sensor", device_class=SensorDeviceClass.POWER, multiple=True
+            )
+        ),
     }
 
 
@@ -114,7 +122,12 @@ def _validate(user_input: dict[str, Any]) -> dict[str, str]:
     grid = user_input[CONF_GRID_SENSOR]
     sources = set(user_input.get(CONF_FEED_IN_SENSORS, []))
     excluded = set(user_input.get(CONF_EXCLUDED_SENSORS, []))
-    if grid in sources or grid in excluded or sources & excluded:
+    candidates = set(user_input.get(CONF_CANDIDATE_SENSORS, []))
+    if (
+        grid in sources | excluded | candidates
+        or sources & excluded
+        or candidates & (sources | excluded)
+    ):
         errors["base"] = "duplicate_sensor"
     if int(user_input[CONF_NIGHT_START]) == int(user_input[CONF_NIGHT_END]):
         errors[CONF_NIGHT_END] = "empty_window"

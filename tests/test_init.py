@@ -15,11 +15,13 @@ from custom_components.base_load.const import DOMAIN
 GRID = "sensor.grid_power"
 BATTERY = "sensor.battery_output"
 WALLBOX = "sensor.wallbox_power"
+HEATER = "sensor.heater_power"
 
 ENTRY_DATA = {
     "grid_sensor": GRID,
     "feed_in_sensors": [BATTERY],
     "excluded_sensors": [WALLBOX],
+    "candidate_sensors": [HEATER],
     "night_start": 1,
     "night_end": 5,
     "lookback_weeks": 8,
@@ -29,7 +31,7 @@ ENTRY_DATA = {
 }
 
 
-def fake_statistics(current_grid: float, charging_now: bool = False):
+def fake_statistics(current_grid: float, charging_now: bool = False, heater_now: float = 20.0):
     """Build a statistics_during_period replacement.
 
     History: grid 300 W at night (with small wobble), battery 50 W at night,
@@ -49,10 +51,12 @@ def fake_statistics(current_grid: float, charging_now: bool = False):
             grid = (250.0 + wobble if night else 900.0) + (1850.0 if charging else 0.0)
             battery = 50.0 if night else 0.0
             wallbox = 1850.0 if charging else 0.0
+            heater = 20.0
             if period == "5minute" and moment >= recent_cutoff:
                 grid, battery = current_grid, 50.0
                 wallbox = 1850.0 if charging_now else 0.0
-            values = {GRID: grid, BATTERY: battery, WALLBOX: wallbox}
+                heater = heater_now
+            values = {GRID: grid, BATTERY: battery, WALLBOX: wallbox, HEATER: heater}
             for sid in statistic_ids:
                 rows[sid].append({"start": moment.timestamp(), "mean": values[sid]})
             moment += step
@@ -61,12 +65,14 @@ def fake_statistics(current_grid: float, charging_now: bool = False):
     return _impl
 
 
-async def _setup(hass: HomeAssistant, current_grid: float, charging_now: bool = False):
+async def _setup(
+    hass: HomeAssistant, current_grid: float, charging_now: bool = False, heater_now: float = 20.0
+):
     entry = MockConfigEntry(domain=DOMAIN, title="Base Load", data=ENTRY_DATA, unique_id=GRID)
     entry.add_to_hass(hass)
     with patch(
         "custom_components.base_load.coordinator.statistics_during_period",
-        side_effect=fake_statistics(current_grid, charging_now),
+        side_effect=fake_statistics(current_grid, charging_now, heater_now),
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -181,3 +187,38 @@ async def test_diagnostics(hass: HomeAssistant, night) -> None:
     assert diag["config"]["grid_sensor"] == GRID
     assert diag["evaluation"]["is_anomaly"] is True
     assert set(diag["baseline"]) == {"workday", "weekend"}
+
+
+async def test_cause_measured_device(hass: HomeAssistant, night) -> None:
+    hass.states.async_set(HEATER, "320", {"friendly_name": "Heater"})
+    await _setup(hass, current_grid=562.0, heater_now=320.0)
+
+    cause = hass.states.get("sensor.base_load_probable_cause")
+    assert cause.state == "Heater +300 W"
+    assert cause.attributes["causes"][0]["entity_id"] == HEATER
+    assert abs(cause.attributes["unexplained"]) < 30
+
+
+async def test_cause_unmeasured(hass: HomeAssistant, night) -> None:
+    await _setup(hass, current_grid=600.0)
+
+    cause = hass.states.get("sensor.base_load_probable_cause")
+    assert cause.state.startswith("Unmeasured +")
+    assert "constant since" in cause.state
+    assert cause.attributes["causes"] == []
+    assert cause.attributes["pattern"] == "constant"
+
+
+async def test_no_cause_on_normal_night(hass: HomeAssistant, night) -> None:
+    await _setup(hass, current_grid=262.0)
+    cause = hass.states.get("sensor.base_load_probable_cause")
+    assert cause.state == "Nothing unusual"
+
+
+async def test_diagnostics_include_explanation(hass: HomeAssistant, night) -> None:
+    from custom_components.base_load.diagnostics import async_get_config_entry_diagnostics
+
+    entry = await _setup(hass, current_grid=600.0)
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    assert diag["explanation"]["pattern"]["shape"] == "constant"
+    assert diag["candidate_sensors"] == [HEATER]

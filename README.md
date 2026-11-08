@@ -39,6 +39,26 @@ house load = grid import + local sources (PV, battery) - excluded loads
 
 The night being evaluated never enters its own baseline.
 
+## Cause analysis
+
+When the base load deviates, the integration suggests what caused it:
+
+1. **Measured devices.** Select plugs or sub-meters under *Devices for cause analysis*.
+   Each one gets its own night baseline, learned on the same hours as the house.
+   Devices that moved in the same direction as the total and stand out from their
+   own spread are ranked by size, for example `Heater +300 W`.
+2. **The rest.** Whatever the selected devices do not explain is reported as
+   unmeasured, together with its onset and shape, for example
+   `Unmeasured +240 W (constant since 23:40)`. A constant step usually means a single
+   device left running (heater, lamp, pump), an intermittent one a device that cycles
+   (fridge, dehumidifier, heating rod).
+
+The analysis runs for clear deviations (at least the minimum deviation), even when
+the score stays below the anomaly threshold.
+
+Do not select a group sensor together with its members, the deviation would be
+counted twice.
+
 ## Entities
 
 | Entity | Description |
@@ -47,6 +67,8 @@ The night being evaluated never enters its own baseline.
 | `sensor.<name>_current_base_load` | House load, mean of the last 30 minutes |
 | `sensor.<name>_base_load_deviation` | Deviation from the baseline during the night window, with `score` and `direction` |
 | `sensor.<name>_last_night_base_load` | Mean house load of the last completed night |
+| `sensor.<name>_probable_cause` | Suggested cause for the running night, attributes `causes`, `unexplained`, `pattern`, `onset` |
+| `sensor.<name>_last_night_probable_cause` | Suggested cause for the last completed night |
 | `binary_sensor.<name>_base_load_anomaly` | On while the current night deviates. Attribute `status`: `monitoring`, `learning`, `outside_night_window`, `excluded_load_active`, `no_data` |
 | `binary_sensor.<name>_last_night_anomaly` | Verdict for the last completed night, ideal for a morning notification |
 
@@ -100,7 +122,8 @@ actions:
       message: >
         Last night the base load was
         {{ state_attr('binary_sensor.base_load_last_night_anomaly', 'deviation') }} W
-        off the usual level.
+        off the usual level. Probable cause:
+        {{ states('sensor.base_load_last_night_probable_cause') }}
 ```
 
 ## Diagnostics

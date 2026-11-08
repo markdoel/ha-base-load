@@ -35,4 +35,9 @@ async def async_get_config_entry_diagnostics(
         "last_night_evaluation": (
             asdict(data.last_night_evaluation) if data.last_night_evaluation else None
         ),
+        "explanation": asdict(data.explanation) if data.explanation else None,
+        "last_night_explanation": (
+            asdict(data.last_night_explanation) if data.last_night_explanation else None
+        ),
+        "candidate_sensors": coordinator.candidate_sensors,
     }

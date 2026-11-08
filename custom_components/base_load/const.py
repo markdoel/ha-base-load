@@ -16,6 +16,7 @@ CONF_LOOKBACK_WEEKS: Final = "lookback_weeks"
 CONF_SENSITIVITY: Final = "sensitivity"
 CONF_MIN_DEVIATION: Final = "min_deviation"
 CONF_EXCLUDED_THRESHOLD: Final = "excluded_threshold"
+CONF_CANDIDATE_SENSORS: Final = "candidate_sensors"
 
 DEFAULT_NAME: Final = "Base Load"
 DEFAULT_NIGHT_START: Final = 1
@@ -40,3 +41,6 @@ DAY_TYPE_WEEKEND: Final = "weekend"
 
 DIRECTION_HIGH: Final = "high"
 DIRECTION_LOW: Final = "low"
+
+# How far before the night window the onset of a deviation is searched.
+ONSET_LOOKBACK: Final = timedelta(hours=3)

@@ -15,7 +15,9 @@ from homeassistant.components.sensor import (
 from homeassistant.const import UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.util import dt as dt_util
 
+from .causes import Explanation
 from .const import DAY_TYPE_WEEKEND, DAY_TYPE_WORKDAY
 from .coordinator import BaseLoadConfigEntry, BaseLoadData
 from .entity import BaseLoadEntity
@@ -114,7 +116,14 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    async_add_entities(BaseLoadSensor(coordinator, description) for description in SENSORS)
+    entities: list[SensorEntity] = [
+        BaseLoadSensor(coordinator, description) for description in SENSORS
+    ]
+    entities += [
+        BaseLoadCauseSensor(coordinator, "cause", last_night=False),
+        BaseLoadCauseSensor(coordinator, "last_night_cause", last_night=True),
+    ]
+    async_add_entities(entities)
 
 
 class BaseLoadSensor(BaseLoadEntity, SensorEntity):
@@ -135,3 +144,106 @@ class BaseLoadSensor(BaseLoadEntity, SensorEntity):
         if self.entity_description.attrs_fn is None:
             return None
         return self.entity_description.attrs_fn(self.coordinator.data)
+
+
+_TEXT = {
+    "de": {
+        "none": "Keine Auffälligkeit",
+        "unmeasured": "nicht gemessen",
+        "constant": "dauerhaft",
+        "intermittent": "zeitweise",
+        "since": "ab",
+    },
+    "en": {
+        "none": "Nothing unusual",
+        "unmeasured": "unmeasured",
+        "constant": "constant",
+        "intermittent": "intermittent",
+        "since": "since",
+    },
+}
+# Unexplained rest is mentioned only if it is a real part of the deviation.
+UNEXPLAINED_MIN_W = 30.0
+UNEXPLAINED_MIN_SHARE = 0.25
+
+
+def _watts(value: float) -> str:
+    return f"{value:+.0f} W"
+
+
+class BaseLoadCauseSensor(BaseLoadEntity, SensorEntity):
+    """Plain-language guess at what caused a deviation."""
+
+    def __init__(self, coordinator, key: str, last_night: bool) -> None:
+        super().__init__(coordinator, key)
+        self._last_night = last_night
+
+    @property
+    def _explanation(self) -> Explanation | None:
+        data = self.coordinator.data
+        return data.last_night_explanation if self._last_night else data.explanation
+
+    def _text(self) -> dict[str, str]:
+        language = (self.hass.config.language or "en").split("-")[0]
+        return _TEXT.get(language, _TEXT["en"])
+
+    def _name_of(self, entity_id: str) -> str:
+        state = self.hass.states.get(entity_id)
+        return state.name if state is not None else entity_id
+
+    @staticmethod
+    def _show_unexplained(explanation: Explanation) -> bool:
+        rest = abs(explanation.unexplained)
+        return rest >= UNEXPLAINED_MIN_W and rest >= UNEXPLAINED_MIN_SHARE * abs(explanation.total)
+
+    @property
+    def native_value(self) -> str:
+        text = self._text()
+        explanation = self._explanation
+        if explanation is None:
+            return text["none"]
+
+        parts = [
+            f"{self._name_of(cause.entity_id)} {_watts(cause.deviation)}"
+            for cause in explanation.causes
+        ]
+        if self._show_unexplained(explanation) or not parts:
+            rest = f"{text['unmeasured']} {_watts(explanation.unexplained)}"
+            pattern = explanation.pattern
+            if pattern is not None and pattern.shape is not None:
+                detail = text[pattern.shape]
+                if pattern.onset is not None:
+                    onset = dt_util.as_local(pattern.onset).strftime("%H:%M")
+                    detail = f"{detail} {text['since']} {onset}"
+                rest = f"{rest} ({detail})"
+            parts.append(rest)
+        value = ", ".join(parts)
+        return value[0].upper() + value[1:]
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any]:
+        explanation = self._explanation
+        data = self.coordinator.data
+        attrs: dict[str, Any] = {}
+        if self._last_night:
+            attrs["date"] = data.last_night_date
+        if explanation is None:
+            return attrs
+        pattern = explanation.pattern
+        attrs |= {
+            "total_deviation": round(explanation.total),
+            "causes": [
+                {
+                    "entity_id": cause.entity_id,
+                    "name": self._name_of(cause.entity_id),
+                    "deviation": round(cause.deviation),
+                    "usual": round(cause.baseline),
+                    "measured": round(cause.current),
+                }
+                for cause in explanation.causes
+            ],
+            "unexplained": round(explanation.unexplained),
+            "pattern": pattern.shape if pattern else None,
+            "onset": pattern.onset if pattern else None,
+        }
+        return attrs

@@ -1,19 +1,37 @@
 {
   "entity": {
     "sensor": {
-      "expected": {"default": "mdi:home-clock"},
-      "current": {"default": "mdi:home-lightning-bolt"},
-      "deviation": {"default": "mdi:plus-minus-variant"},
-      "last_night": {"default": "mdi:weather-night"}
+      "expected": {
+        "default": "mdi:home-clock"
+      },
+      "current": {
+        "default": "mdi:home-lightning-bolt"
+      },
+      "deviation": {
+        "default": "mdi:plus-minus-variant"
+      },
+      "last_night": {
+        "default": "mdi:weather-night"
+      },
+      "cause": {
+        "default": "mdi:magnify-expand"
+      },
+      "last_night_cause": {
+        "default": "mdi:magnify-expand"
+      }
     },
     "binary_sensor": {
       "anomaly": {
         "default": "mdi:home-alert",
-        "state": {"off": "mdi:home-check"}
+        "state": {
+          "off": "mdi:home-check"
+        }
       },
       "last_night_anomaly": {
         "default": "mdi:moon-waning-crescent",
-        "state": {"on": "mdi:home-alert"}
+        "state": {
+          "on": "mdi:home-alert"
+        }
       }
     }
   }
