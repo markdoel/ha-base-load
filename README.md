@@ -25,15 +25,22 @@ the recorder's hourly statistics, so years of existing data are usable on day on
 house load = grid import + local sources (PV, battery) - excluded loads
 ```
 
-1. Hourly means of all selected sensors are read from the recorder for the learning
-   period (default 8 weeks).
-2. Hours inside the night window (default 01:00 to 05:00) are grouped into workday
+1. Hourly mean, min and max of all selected sensors are read from the recorder for
+   the learning period (default 8 weeks).
+2. Excluded loads (e.g. the EV charger) are subtracted when they ran the whole hour
+   or not at all. Hours in which they switched on or off are dropped, because sensor
+   lag makes the subtraction unreliable at the edges. Charging nights stay usable.
+3. Gaps in local sources are bridged with the last value if that value was small
+   (up to 50 W) and recent (up to 12 hours). Battery hubs often stop reporting at
+   night while idle. Any other gap drops the hour, so a battery delivering power
+   without data never looks like extra consumption.
+4. Hours inside the night window (default 01:00 to 05:00) are grouped into workday
    and weekend nights. The day type is that of the morning after.
-3. Hours in which an excluded load (e.g. the EV charger) ran above its threshold
-   are dropped. Subtracting a charging session hour by hour is too inaccurate.
-4. Per day type the **median** and **MAD** are computed. Both are robust against
-   outliers, so a few unusual nights do not shift the baseline.
-5. During the night the mean of the last 30 minutes (5-minute statistics) is compared
+5. Per day type a weighted **median** and **MAD** are computed. Both are robust
+   against outliers. Recent nights weigh more (half life 14 days by default), so the
+   baseline follows lasting changes like the start of the heating season within
+   about two weeks instead of a month.
+6. During the night the mean of the last 30 minutes (5-minute statistics) is compared
    with the baseline. An anomaly needs both a robust score above the sensitivity and
    an absolute deviation above the minimum.
 
@@ -130,6 +137,11 @@ actions:
 
 *Settings → Devices & services → Base Load Monitor → Download diagnostics* returns
 the configuration, the baseline and the latest evaluation. It contains no secrets.
+
+## Releases
+
+Bump `version` in `custom_components/base_load/manifest.json` and push to `main`.
+The release workflow runs the tests and publishes tag and release `v<version>`.
 
 ## Development
 

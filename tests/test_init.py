@@ -31,7 +31,12 @@ ENTRY_DATA = {
 }
 
 
-def fake_statistics(current_grid: float, charging_now: bool = False, heater_now: float = 20.0):
+def fake_statistics(
+    current_grid: float,
+    charging_now: bool = False,
+    heater_now: float = 20.0,
+    charging_switches: bool = False,
+):
     """Build a statistics_during_period replacement.
 
     History: grid 300 W at night (with small wobble), battery 50 W at night,
@@ -57,8 +62,19 @@ def fake_statistics(current_grid: float, charging_now: bool = False, heater_now:
                 wallbox = 1850.0 if charging_now else 0.0
                 heater = heater_now
             values = {GRID: grid, BATTERY: battery, WALLBOX: wallbox, HEATER: heater}
+            lows = dict(values)
+            highs = dict(values)
+            if charging_switches and period == "5minute" and moment >= recent_cutoff:
+                values[WALLBOX], lows[WALLBOX], highs[WALLBOX] = 900.0, 0.0, 1850.0
             for sid in statistic_ids:
-                rows[sid].append({"start": moment.timestamp(), "mean": values[sid]})
+                rows[sid].append(
+                    {
+                        "start": moment.timestamp(),
+                        "mean": values[sid],
+                        "min": lows[sid],
+                        "max": highs[sid],
+                    }
+                )
             moment += step
         return rows
 
@@ -66,13 +82,17 @@ def fake_statistics(current_grid: float, charging_now: bool = False, heater_now:
 
 
 async def _setup(
-    hass: HomeAssistant, current_grid: float, charging_now: bool = False, heater_now: float = 20.0
+    hass: HomeAssistant,
+    current_grid: float,
+    charging_now: bool = False,
+    heater_now: float = 20.0,
+    charging_switches: bool = False,
 ):
     entry = MockConfigEntry(domain=DOMAIN, title="Base Load", data=ENTRY_DATA, unique_id=GRID)
     entry.add_to_hass(hass)
     with patch(
         "custom_components.base_load.coordinator.statistics_during_period",
-        side_effect=fake_statistics(current_grid, charging_now, heater_now),
+        side_effect=fake_statistics(current_grid, charging_now, heater_now, charging_switches),
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -111,8 +131,19 @@ async def test_high_load_is_flagged(hass: HomeAssistant, night) -> None:
     assert float(deviation.state) > 300
 
 
-async def test_charging_suppresses_evaluation(hass: HomeAssistant, night) -> None:
-    await _setup(hass, current_grid=2400.0, charging_now=True)
+async def test_full_charging_is_subtracted(hass: HomeAssistant, night) -> None:
+    # Car charges the whole window: 262 W house + 1850 W charger on the grid.
+    await _setup(hass, current_grid=2112.0, charging_now=True)
+
+    anomaly = hass.states.get("binary_sensor.base_load_base_load_anomaly")
+    current = hass.states.get("sensor.base_load_current_base_load")
+    assert anomaly.state == "off"
+    assert anomaly.attributes["status"] == "monitoring"
+    assert float(current.state) == pytest.approx(312.0)
+
+
+async def test_switching_charger_suppresses_evaluation(hass: HomeAssistant, night) -> None:
+    await _setup(hass, current_grid=1162.0, charging_switches=True)
 
     anomaly = hass.states.get("binary_sensor.base_load_base_load_anomaly")
     assert anomaly.state == "off"
@@ -123,10 +154,10 @@ async def test_last_night_verdict(hass: HomeAssistant, night) -> None:
     await _setup(hass, current_grid=262.0)
 
     last = hass.states.get("binary_sensor.base_load_last_night_anomaly")
-    # Night ending Tuesday 3 Nov was a charging night, so it has no hours left;
-    # the latest complete night with data ended Monday 2 Nov.
+    # The night ending Tuesday 3 Nov was a charging night. Full charging hours
+    # are subtracted now, so it counts as the last completed night.
     assert last.state == "off"
-    assert str(last.attributes["date"]) == "2026-11-02"
+    assert str(last.attributes["date"]) == "2026-11-03"
 
 
 async def test_config_flow(hass: HomeAssistant) -> None:

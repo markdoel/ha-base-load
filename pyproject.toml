@@ -1,6 +1,6 @@
 [project]
 name = "ha-base-load"
-version = "0.3.1"
+version = "0.4.0"
 description = "Home Assistant integration that learns the night-time base load and flags anomalies"
 requires-python = ">=3.13"
 

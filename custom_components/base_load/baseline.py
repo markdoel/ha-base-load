@@ -7,9 +7,9 @@ All timestamps are local, timezone-aware datetimes marking the start of a period
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from statistics import fmean, median
+from statistics import fmean
 
 from .const import DAY_TYPE_WEEKEND, DAY_TYPE_WORKDAY, DIRECTION_HIGH, DIRECTION_LOW
 
@@ -75,54 +75,182 @@ def day_type(moment: datetime, start: int, end: int) -> str:
     return day_type_of(night_date(moment, start, end))
 
 
+@dataclass(frozen=True, slots=True)
+class MeteredSeries:
+    """Hourly or 5-minute statistics of one sensor: mean, min and max per period."""
+
+    mean: Series
+    min: Series = field(default_factory=dict)
+    max: Series = field(default_factory=dict)
+
+    @property
+    def first(self) -> datetime | None:
+        """First period with data, the sensor did not exist before."""
+        return min(self.mean) if self.mean else None
+
+
+# A gap is bridged with the last known value only if that value was small and
+# recent. Battery hubs often stop reporting at night while idle; a gap after
+# real output (or after a charging car) stays unknown and drops the period.
+GAP_FILL_MAX_W = 50.0
+GAP_FILL_MAX_AGE = timedelta(hours=12)
+
+
+def _fill_gaps(series: MeteredSeries, moments: Iterable[datetime]) -> MeteredSeries:
+    """Complete a series on the given periods.
+
+    - Before the first recorded period the sensor did not exist: 0 W.
+    - A gap after a small, recent value: that value, assumed steady.
+    - Any other gap: no value, the period will be dropped.
+    """
+    first = series.first
+    mean: dict[datetime, float] = {}
+    low: dict[datetime, float] = {}
+    high: dict[datetime, float] = {}
+    last: tuple[datetime, float] | None = None
+
+    for moment in sorted(moments):
+        value = series.mean.get(moment)
+        if value is not None:
+            mean[moment] = value
+            if moment in series.min:
+                low[moment] = series.min[moment]
+            if moment in series.max:
+                high[moment] = series.max[moment]
+            last = (moment, value)
+            continue
+        if first is None or moment < first:
+            fill = 0.0
+        elif (
+            last is not None
+            and abs(last[1]) <= GAP_FILL_MAX_W
+            and moment - last[0] <= GAP_FILL_MAX_AGE
+        ):
+            fill = last[1]
+        else:
+            continue
+        mean[moment] = low[moment] = high[moment] = fill
+
+    return MeteredSeries(mean=mean, min=low, max=high)
+
+
+def _excluded_part(series: MeteredSeries, moment: datetime, threshold: float) -> float | None:
+    """Watts to subtract for an excluded load, or None if the period must go.
+
+    Fully off (max <= threshold) or fully on (min > threshold): the mean is
+    subtracted. A load that switched within the period (min <= threshold < max)
+    drops it, because sensor lag makes the subtraction unreliable at the edges.
+    Without min and max a mean above the threshold drops the period, too.
+    """
+    mean = series.mean.get(moment)
+    if mean is None:
+        return None
+    low = series.min.get(moment)
+    high = series.max.get(moment)
+    if low is None or high is None:
+        return mean if mean <= threshold else None
+    if low <= threshold < high:
+        return None
+    return mean
+
+
 def combine_house_load(
     grid: Series,
-    feed_ins: Iterable[Series],
-    excluded: Iterable[Series],
+    feed_ins: Iterable[MeteredSeries],
+    excluded: Iterable[MeteredSeries],
     excluded_threshold: float,
 ) -> dict[datetime, float]:
     """Compute the household load per period.
 
     House load = grid import + local sources (PV, battery) - excluded loads.
-    Periods without a grid value are dropped. Missing sources count as 0.
-    Periods in which an excluded load ran above the threshold (for example the
-    car charging) are dropped entirely: subtracting it is too inaccurate at the
-    edges of a charging session.
+
+    - Periods without a grid value are dropped.
+    - Gaps in sources and excluded loads are handled by _fill_gaps; a gap
+      that cannot be bridged drops the period, because a battery delivering
+      400 W without data would otherwise look like 400 W of extra load.
+    - Excluded loads are subtracted when they ran the whole period or not at
+      all, periods in which they switched are dropped.
     """
-    feed_in_list = list(feed_ins)
-    excluded_list = list(excluded)
+    moments = list(grid)
+    feed_in_list = [_fill_gaps(series, moments) for series in feed_ins]
+    excluded_list = [_fill_gaps(series, moments) for series in excluded]
     result: dict[datetime, float] = {}
 
     for moment, grid_value in grid.items():
-        excluded_values = [series.get(moment, 0.0) for series in excluded_list]
-        if any(value > excluded_threshold for value in excluded_values):
+        feed_in = [series.mean.get(moment) for series in feed_in_list]
+        if None in feed_in:
             continue
-        feed_in = sum(series.get(moment, 0.0) for series in feed_in_list)
-        result[moment] = grid_value + feed_in - sum(excluded_values)
+        parts = [_excluded_part(series, moment, excluded_threshold) for series in excluded_list]
+        if None in parts:
+            continue
+        result[moment] = grid_value + sum(feed_in) - sum(parts)
 
     return result
 
 
-def robust_stats(values: Iterable[float]) -> BaselineStats | None:
-    """Median and median absolute deviation (MAD)."""
+def weighted_median(pairs: Iterable[tuple[float, float]]) -> float:
+    """Median of (value, weight) pairs; plain median when all weights are equal."""
+    ordered = sorted(pairs)
+    total = sum(weight for _, weight in ordered)
+    half = total / 2
+    running = 0.0
+    for index, (value, weight) in enumerate(ordered):
+        running += weight
+        if running > half:
+            return value
+        if running == half:
+            # Exactly on the boundary: average with the next value, as median does.
+            return (value + ordered[index + 1][0]) / 2
+    return ordered[-1][0]
+
+
+def robust_stats(
+    values: Iterable[float], weights: Iterable[float] | None = None
+) -> BaselineStats | None:
+    """Median and median absolute deviation (MAD), optionally weighted."""
     data = list(values)
     if not data:
         return None
-    mid = median(data)
-    mad = median(abs(value - mid) for value in data)
+    weight_list = list(weights) if weights is not None else [1.0] * len(data)
+    mid = weighted_median(zip(data, weight_list, strict=True))
+    mad = weighted_median(
+        (abs(value - mid), weight) for value, weight in zip(data, weight_list, strict=True)
+    )
     return BaselineStats(median=mid, mad=mad, count=len(data))
 
 
-def build_baseline(house_load: Series, start: int, end: int) -> dict[str, BaselineStats]:
-    """Baseline per day type from all night hours."""
-    buckets: dict[str, list[float]] = {DAY_TYPE_WORKDAY: [], DAY_TYPE_WEEKEND: []}
+def age_weight(moment: datetime, now: datetime | None, half_life_days: float) -> float:
+    """Exponential decay: a value half_life_days old counts half."""
+    if now is None or half_life_days <= 0:
+        return 1.0
+    age_days = max((now - moment).total_seconds() / 86400, 0.0)
+    return 0.5 ** (age_days / half_life_days)
+
+
+def build_baseline(
+    house_load: Series,
+    start: int,
+    end: int,
+    now: datetime | None = None,
+    half_life_days: float = 0.0,
+) -> dict[str, BaselineStats]:
+    """Baseline per day type from all night hours.
+
+    With a half life, recent nights weigh more, so the baseline follows lasting
+    changes (heating season, a new device) faster without reacting to one night.
+    """
+    buckets: dict[str, list[tuple[float, float]]] = {
+        DAY_TYPE_WORKDAY: [],
+        DAY_TYPE_WEEKEND: [],
+    }
     for moment, value in house_load.items():
         if in_night_window(moment.hour, start, end):
-            buckets[day_type(moment, start, end)].append(value)
+            weight = age_weight(moment, now, half_life_days)
+            buckets[day_type(moment, start, end)].append((value, weight))
 
     baseline: dict[str, BaselineStats] = {}
-    for key, values in buckets.items():
-        stats = robust_stats(values)
+    for key, pairs in buckets.items():
+        stats = robust_stats([v for v, _ in pairs], [w for _, w in pairs])
         if stats is not None:
             baseline[key] = stats
     return baseline

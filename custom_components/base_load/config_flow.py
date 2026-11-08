@@ -17,12 +17,14 @@ from .const import (
     CONF_EXCLUDED_THRESHOLD,
     CONF_FEED_IN_SENSORS,
     CONF_GRID_SENSOR,
+    CONF_HALF_LIFE_DAYS,
     CONF_LOOKBACK_WEEKS,
     CONF_MIN_DEVIATION,
     CONF_NIGHT_END,
     CONF_NIGHT_START,
     CONF_SENSITIVITY,
     DEFAULT_EXCLUDED_THRESHOLD,
+    DEFAULT_HALF_LIFE_DAYS,
     DEFAULT_LOOKBACK_WEEKS,
     DEFAULT_MIN_DEVIATION,
     DEFAULT_NAME,
@@ -97,6 +99,18 @@ def _tuning_schema(defaults: dict[str, Any]) -> dict[vol.Marker, Any]:
         ): selector.NumberSelector(
             selector.NumberSelectorConfig(
                 min=2, max=26, step=1, mode=selector.NumberSelectorMode.BOX
+            )
+        ),
+        vol.Required(
+            CONF_HALF_LIFE_DAYS,
+            default=defaults.get(CONF_HALF_LIFE_DAYS, DEFAULT_HALF_LIFE_DAYS),
+        ): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=0,
+                max=60,
+                step=1,
+                mode=selector.NumberSelectorMode.BOX,
+                unit_of_measurement="d",
             )
         ),
         vol.Required(

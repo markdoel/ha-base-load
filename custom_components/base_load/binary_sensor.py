@@ -58,10 +58,8 @@ class BaseLoadAnomaly(BaseLoadEntity, BinarySensorEntity):
             return "learning"
         if not data.in_night:
             return "outside_night_window"
-        if data.excluded_active:
-            return "excluded_load_active"
         if data.current_load is None:
-            return "no_data"
+            return "excluded_load_active" if data.excluded_active else "no_data"
         return "monitoring"
 
 

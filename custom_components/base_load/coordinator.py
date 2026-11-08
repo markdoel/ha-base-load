@@ -19,6 +19,7 @@ from homeassistant.util import dt as dt_util
 from .baseline import (
     BaselineStats,
     Evaluation,
+    MeteredSeries,
     build_baseline,
     combine_house_load,
     day_type,
@@ -43,6 +44,7 @@ from .const import (
     CONF_EXCLUDED_THRESHOLD,
     CONF_FEED_IN_SENSORS,
     CONF_GRID_SENSOR,
+    CONF_HALF_LIFE_DAYS,
     CONF_LOOKBACK_WEEKS,
     CONF_MIN_DEVIATION,
     CONF_NIGHT_END,
@@ -50,6 +52,7 @@ from .const import (
     CONF_SENSITIVITY,
     CURRENT_WINDOW,
     DEFAULT_EXCLUDED_THRESHOLD,
+    DEFAULT_HALF_LIFE_DAYS,
     DEFAULT_LOOKBACK_WEEKS,
     DEFAULT_MIN_DEVIATION,
     DEFAULT_NIGHT_END,
@@ -64,7 +67,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 type BaseLoadConfigEntry = ConfigEntry[BaseLoadCoordinator]
-type SeriesById = dict[str, dict[datetime, float]]
+type SeriesById = dict[str, MeteredSeries]
 
 
 @dataclass(slots=True)
@@ -149,6 +152,10 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         return float(self._opt(CONF_EXCLUDED_THRESHOLD, DEFAULT_EXCLUDED_THRESHOLD))
 
     @property
+    def half_life_days(self) -> float:
+        return float(self._opt(CONF_HALF_LIFE_DAYS, DEFAULT_HALF_LIFE_DAYS))
+
+    @property
     def min_deviation(self) -> float:
         return float(self._opt(CONF_MIN_DEVIATION, DEFAULT_MIN_DEVIATION))
 
@@ -177,30 +184,35 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
             self.all_sensors,
             period,
             {"power": UnitOfPower.WATT},
-            {"mean"},
+            {"mean", "min", "max"},
         )
         result: SeriesById = {}
         for statistic_id, entries in rows.items():
-            series: dict[datetime, float] = {}
+            series = MeteredSeries(mean={}, min={}, max={})
             for row in entries:
                 mean = row.get("mean")
                 if mean is None:
                     continue
                 raw_start = row["start"]
-                moment = (
+                moment = dt_util.as_local(
                     dt_util.utc_from_timestamp(raw_start)
                     if isinstance(raw_start, (int, float))
                     else raw_start
                 )
-                series[dt_util.as_local(moment)] = float(mean)
+                series.mean[moment] = float(mean)
+                if (low := row.get("min")) is not None:
+                    series.min[moment] = float(low)
+                if (high := row.get("max")) is not None:
+                    series.max[moment] = float(high)
             result[statistic_id] = series
         return result
 
     def _house_load_from(self, data: SeriesById) -> dict[datetime, float]:
+        empty = MeteredSeries(mean={})
         return combine_house_load(
-            grid=data.get(self.grid_sensor, {}),
-            feed_ins=[data.get(sensor, {}) for sensor in self.feed_in_sensors],
-            excluded=[data.get(sensor, {}) for sensor in self.excluded_sensors],
+            grid=data.get(self.grid_sensor, empty).mean,
+            feed_ins=[data.get(sensor, empty) for sensor in self.feed_in_sensors],
+            excluded=[data.get(sensor, empty) for sensor in self.excluded_sensors],
             excluded_threshold=self.excluded_threshold,
         )
 
@@ -208,11 +220,13 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         """Load hourly statistics for the learning period and build the baselines."""
         weeks = int(self._opt(CONF_LOOKBACK_WEEKS, DEFAULT_LOOKBACK_WEEKS))
         data = await self._fetch(now - timedelta(weeks=weeks), now, "hour")
-        if not data.get(self.grid_sensor):
+        if self.grid_sensor not in data or not data[self.grid_sensor].mean:
             raise UpdateFailed(f"No long-term statistics found for {self.grid_sensor}")
 
         self._house_load = self._house_load_from(data)
-        self._devices = {sensor: data.get(sensor, {}) for sensor in self.candidate_sensors}
+        self._devices = {
+            sensor: data[sensor].mean if sensor in data else {} for sensor in self.candidate_sensors
+        }
         start, end = self.night_start, self.night_end
         today = now.date()
         # Only nights that ended before today go into the baseline, so the night
@@ -222,11 +236,14 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
             for moment, value in self._house_load.items()
             if night_date(moment, start, end) < today
         }
-        self._baseline = build_baseline(history, start, end)
+        half_life = self.half_life_days
+        self._baseline = build_baseline(history, start, end, now, half_life)
         # Devices learn on exactly the hours the house baseline uses, so
         # charging hours and the evaluated night are left out for them too.
         self._device_baselines = {
-            sensor: build_baseline({m: v for m, v in series.items() if m in history}, start, end)
+            sensor: build_baseline(
+                {m: v for m, v in series.items() if m in history}, start, end, now, half_life
+            )
             for sensor, series in self._devices.items()
         }
         self._baseline_updated = now
@@ -261,7 +278,10 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         causes = rank_causes(evaluation.deviation, device_values, baselines)
         residual = residual_series(
             self._house_load_from(five_minute),
-            {sensor: five_minute.get(sensor, {}) for sensor in self.candidate_sensors},
+            {
+                sensor: five_minute[sensor].mean if sensor in five_minute else {}
+                for sensor in self.candidate_sensors
+            },
             baselines,
             causes,
         )
@@ -320,10 +340,13 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         window_values = [value for moment, value in recent_load.items() if moment >= cutoff]
         current = fmean(window_values) if window_values else None
 
+        # Informational: an excluded load ran in the window. It only blocks the
+        # evaluation if it left no usable period (all of them switched).
         excluded_active = any(
             value > self.excluded_threshold
             for sensor in self.excluded_sensors
-            for moment, value in recent.get(sensor, {}).items()
+            if sensor in recent
+            for moment, value in (recent[sensor].max or recent[sensor].mean).items()
             if moment >= cutoff
         )
 
@@ -342,14 +365,14 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
             and expected.count >= MIN_BASELINE_HOURS
             and current is not None
             and in_night
-            and not excluded_active
         ):
             result.evaluation = evaluate(current, expected, self.sensitivity, self.min_deviation)
             if self._notable(result.evaluation) and result.day_type is not None:
                 device_values = {
                     sensor: value
                     for sensor in self.candidate_sensors
-                    if (value := mean_in(recent.get(sensor, {}), cutoff, now)) is not None
+                    if sensor in recent
+                    and (value := mean_in(recent[sensor].mean, cutoff, now)) is not None
                 }
                 result.explanation = self._explain(
                     result.evaluation,

@@ -17,6 +17,7 @@ CONF_SENSITIVITY: Final = "sensitivity"
 CONF_MIN_DEVIATION: Final = "min_deviation"
 CONF_EXCLUDED_THRESHOLD: Final = "excluded_threshold"
 CONF_CANDIDATE_SENSORS: Final = "candidate_sensors"
+CONF_HALF_LIFE_DAYS: Final = "half_life_days"
 
 DEFAULT_NAME: Final = "Base Load"
 DEFAULT_NIGHT_START: Final = 1
@@ -25,6 +26,7 @@ DEFAULT_LOOKBACK_WEEKS: Final = 8
 DEFAULT_SENSITIVITY: Final = 3.0
 DEFAULT_MIN_DEVIATION: Final = 60
 DEFAULT_EXCLUDED_THRESHOLD: Final = 50
+DEFAULT_HALF_LIFE_DAYS: Final = 14
 
 # Minimum number of valid night hours per day type before the baseline is trusted.
 MIN_BASELINE_HOURS: Final = 24

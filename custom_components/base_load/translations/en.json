@@ -15,7 +15,8 @@
           "sensitivity": "Sensitivity (robust sigma)",
           "min_deviation": "Minimum deviation",
           "excluded_threshold": "Excluded load threshold",
-          "candidate_sensors": "Devices for cause analysis"
+          "candidate_sensors": "Devices for cause analysis",
+          "half_life_days": "Half life of the baseline"
         },
         "data_description": {
           "grid_sensor": "Power from the grid in W. Negative values mean export.",
@@ -24,7 +25,8 @@
           "night_start": "Full hour, local time. The window may wrap past midnight.",
           "sensitivity": "Lower values report more deviations. 3 is a good start.",
           "min_deviation": "Deviations smaller than this are never reported.",
-          "candidate_sensors": "Measured devices (plugs, sub-meters) that are checked when the base load deviates. Do not combine a group sensor with its members."
+          "candidate_sensors": "Measured devices (plugs, sub-meters) that are checked when the base load deviates. Do not combine a group sensor with its members.",
+          "half_life_days": "Nights this many days old count half. Lower values follow lasting changes (heating season) faster. 0 weighs all nights equally."
         }
       }
     },
@@ -50,10 +52,12 @@
           "sensitivity": "Sensitivity (robust sigma)",
           "min_deviation": "Minimum deviation",
           "excluded_threshold": "Excluded load threshold",
-          "candidate_sensors": "Devices for cause analysis"
+          "candidate_sensors": "Devices for cause analysis",
+          "half_life_days": "Half life of the baseline"
         },
         "data_description": {
-          "candidate_sensors": "Measured devices (plugs, sub-meters) that are checked when the base load deviates. Do not combine a group sensor with its members."
+          "candidate_sensors": "Measured devices (plugs, sub-meters) that are checked when the base load deviates. Do not combine a group sensor with its members.",
+          "half_life_days": "Nights this many days old count half. Lower values follow lasting changes (heating season) faster. 0 weighs all nights equally."
         }
       }
     },

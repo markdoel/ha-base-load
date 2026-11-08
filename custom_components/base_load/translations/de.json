@@ -15,7 +15,8 @@
           "sensitivity": "Empfindlichkeit (robuste Sigma)",
           "min_deviation": "Mindestabweichung",
           "excluded_threshold": "Schwelle für herausgerechnete Verbraucher",
-          "candidate_sensors": "Geräte für die Ursachenanalyse"
+          "candidate_sensors": "Geräte für die Ursachenanalyse",
+          "half_life_days": "Halbwertszeit der Baseline"
         },
         "data_description": {
           "grid_sensor": "Netzbezug in W. Negative Werte bedeuten Einspeisung.",
@@ -24,7 +25,8 @@
           "night_start": "Volle Stunde, Ortszeit. Das Fenster darf über Mitternacht gehen.",
           "sensitivity": "Kleinere Werte melden mehr Abweichungen. 3 ist ein guter Start.",
           "min_deviation": "Kleinere Abweichungen werden nie gemeldet.",
-          "candidate_sensors": "Gemessene Geräte (Steckdosen, Zwischenzähler), die bei einer Abweichung geprüft werden. Keinen Gruppensensor zusammen mit seinen Mitgliedern wählen."
+          "candidate_sensors": "Gemessene Geräte (Steckdosen, Zwischenzähler), die bei einer Abweichung geprüft werden. Keinen Gruppensensor zusammen mit seinen Mitgliedern wählen.",
+          "half_life_days": "So alte Nächte zählen nur noch halb. Kleinere Werte folgen dauerhaften Änderungen (Heizsaison) schneller. 0 gewichtet alle Nächte gleich."
         }
       }
     },
@@ -50,10 +52,12 @@
           "sensitivity": "Empfindlichkeit (robuste Sigma)",
           "min_deviation": "Mindestabweichung",
           "excluded_threshold": "Schwelle für herausgerechnete Verbraucher",
-          "candidate_sensors": "Geräte für die Ursachenanalyse"
+          "candidate_sensors": "Geräte für die Ursachenanalyse",
+          "half_life_days": "Halbwertszeit der Baseline"
         },
         "data_description": {
-          "candidate_sensors": "Gemessene Geräte (Steckdosen, Zwischenzähler), die bei einer Abweichung geprüft werden. Keinen Gruppensensor zusammen mit seinen Mitgliedern wählen."
+          "candidate_sensors": "Gemessene Geräte (Steckdosen, Zwischenzähler), die bei einer Abweichung geprüft werden. Keinen Gruppensensor zusammen mit seinen Mitgliedern wählen.",
+          "half_life_days": "So alte Nächte zählen nur noch halb. Kleinere Werte folgen dauerhaften Änderungen (Heizsaison) schneller. 0 gewichtet alle Nächte gleich."
         }
       }
     },
