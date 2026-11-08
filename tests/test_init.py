@@ -142,3 +142,42 @@ async def test_config_flow(hass: HomeAssistant) -> None:
     assert result["title"] == "Haus"
     assert result["data"]["grid_sensor"] == GRID
     assert "name" not in result["data"]
+
+
+async def test_options_flow(hass: HomeAssistant, night) -> None:
+    entry = await _setup(hass, current_grid=262.0)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+
+    with patch(
+        "custom_components.base_load.coordinator.statistics_during_period",
+        side_effect=fake_statistics(262.0),
+    ):
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {**ENTRY_DATA, "sensitivity": 2.5}
+        )
+        await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options["sensitivity"] == 2.5
+
+
+async def test_options_flow_rejects_empty_window(hass: HomeAssistant, night) -> None:
+    entry = await _setup(hass, current_grid=262.0)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {**ENTRY_DATA, "night_start": 3, "night_end": 3}
+    )
+    assert result["errors"] == {"night_end": "empty_window"}
+
+
+async def test_diagnostics(hass: HomeAssistant, night) -> None:
+    from custom_components.base_load.diagnostics import async_get_config_entry_diagnostics
+
+    entry = await _setup(hass, current_grid=600.0)
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diag["config"]["grid_sensor"] == GRID
+    assert diag["evaluation"]["is_anomaly"] is True
+    assert set(diag["baseline"]) == {"workday", "weekend"}

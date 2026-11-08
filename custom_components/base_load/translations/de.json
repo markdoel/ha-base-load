@@ -58,14 +58,137 @@
   },
   "entity": {
     "sensor": {
-      "expected": {"name": "Erwartete Grundlast"},
-      "current": {"name": "Aktuelle Grundlast"},
-      "deviation": {"name": "Grundlast-Abweichung"},
-      "last_night": {"name": "Grundlast letzte Nacht"}
+      "expected": {
+        "name": "Erwartete Grundlast",
+        "state_attributes": {
+          "day_type": {
+            "name": "Tagtyp",
+            "state": {
+              "workday": "Werktag",
+              "weekend": "Wochenende"
+            }
+          },
+          "spread": {
+            "name": "Streuung"
+          },
+          "workday_median": {
+            "name": "Median Werktag"
+          },
+          "workday_hours": {
+            "name": "Stunden Werktag"
+          },
+          "weekend_median": {
+            "name": "Median Wochenende"
+          },
+          "weekend_hours": {
+            "name": "Stunden Wochenende"
+          },
+          "baseline_updated": {
+            "name": "Baseline aktualisiert"
+          }
+        }
+      },
+      "current": {
+        "name": "Aktuelle Grundlast",
+        "state_attributes": {
+          "in_night_window": {
+            "name": "Im Nachtfenster"
+          },
+          "excluded_load_active": {
+            "name": "Ausgeschlossener Verbraucher aktiv"
+          }
+        }
+      },
+      "deviation": {
+        "name": "Grundlast-Abweichung",
+        "state_attributes": {
+          "score": {
+            "name": "Score"
+          },
+          "direction": {
+            "name": "Richtung",
+            "state": {
+              "high": "Höher als üblich",
+              "low": "Niedriger als üblich"
+            }
+          }
+        }
+      },
+      "last_night": {
+        "name": "Grundlast letzte Nacht",
+        "state_attributes": {
+          "date": {
+            "name": "Datum"
+          },
+          "deviation": {
+            "name": "Abweichung"
+          },
+          "score": {
+            "name": "Score"
+          },
+          "direction": {
+            "name": "Richtung",
+            "state": {
+              "high": "Höher als üblich",
+              "low": "Niedriger als üblich"
+            }
+          }
+        }
+      }
     },
     "binary_sensor": {
-      "anomaly": {"name": "Grundlast-Anomalie"},
-      "last_night_anomaly": {"name": "Anomalie letzte Nacht"}
+      "anomaly": {
+        "name": "Grundlast-Anomalie",
+        "state_attributes": {
+          "status": {
+            "name": "Status",
+            "state": {
+              "monitoring": "Überwachung aktiv",
+              "learning": "Lernphase",
+              "outside_night_window": "Außerhalb des Nachtfensters",
+              "excluded_load_active": "Ausgeschlossener Verbraucher aktiv",
+              "no_data": "Keine Daten"
+            }
+          },
+          "direction": {
+            "name": "Richtung",
+            "state": {
+              "high": "Höher als üblich",
+              "low": "Niedriger als üblich"
+            }
+          },
+          "deviation": {
+            "name": "Abweichung"
+          },
+          "score": {
+            "name": "Score"
+          }
+        }
+      },
+      "last_night_anomaly": {
+        "name": "Anomalie letzte Nacht",
+        "state_attributes": {
+          "date": {
+            "name": "Datum"
+          },
+          "load": {
+            "name": "Last"
+          },
+          "direction": {
+            "name": "Richtung",
+            "state": {
+              "high": "Höher als üblich",
+              "low": "Niedriger als üblich"
+            }
+          },
+          "deviation": {
+            "name": "Abweichung"
+          },
+          "score": {
+            "name": "Score"
+          }
+        }
+      }
     }
   }
 }

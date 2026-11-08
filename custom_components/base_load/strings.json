@@ -58,14 +58,137 @@
   },
   "entity": {
     "sensor": {
-      "expected": {"name": "Expected base load"},
-      "current": {"name": "Current base load"},
-      "deviation": {"name": "Base load deviation"},
-      "last_night": {"name": "Last night base load"}
+      "expected": {
+        "name": "Expected base load",
+        "state_attributes": {
+          "day_type": {
+            "name": "Day type",
+            "state": {
+              "workday": "Workday",
+              "weekend": "Weekend"
+            }
+          },
+          "spread": {
+            "name": "Spread"
+          },
+          "workday_median": {
+            "name": "Workday median"
+          },
+          "workday_hours": {
+            "name": "Workday hours"
+          },
+          "weekend_median": {
+            "name": "Weekend median"
+          },
+          "weekend_hours": {
+            "name": "Weekend hours"
+          },
+          "baseline_updated": {
+            "name": "Baseline updated"
+          }
+        }
+      },
+      "current": {
+        "name": "Current base load",
+        "state_attributes": {
+          "in_night_window": {
+            "name": "In night window"
+          },
+          "excluded_load_active": {
+            "name": "Excluded load active"
+          }
+        }
+      },
+      "deviation": {
+        "name": "Base load deviation",
+        "state_attributes": {
+          "score": {
+            "name": "Score"
+          },
+          "direction": {
+            "name": "Direction",
+            "state": {
+              "high": "Higher than usual",
+              "low": "Lower than usual"
+            }
+          }
+        }
+      },
+      "last_night": {
+        "name": "Last night base load",
+        "state_attributes": {
+          "date": {
+            "name": "Date"
+          },
+          "deviation": {
+            "name": "Deviation"
+          },
+          "score": {
+            "name": "Score"
+          },
+          "direction": {
+            "name": "Direction",
+            "state": {
+              "high": "Higher than usual",
+              "low": "Lower than usual"
+            }
+          }
+        }
+      }
     },
     "binary_sensor": {
-      "anomaly": {"name": "Base load anomaly"},
-      "last_night_anomaly": {"name": "Last night anomaly"}
+      "anomaly": {
+        "name": "Base load anomaly",
+        "state_attributes": {
+          "status": {
+            "name": "Status",
+            "state": {
+              "monitoring": "Monitoring",
+              "learning": "Learning",
+              "outside_night_window": "Outside night window",
+              "excluded_load_active": "Excluded load active",
+              "no_data": "No data"
+            }
+          },
+          "direction": {
+            "name": "Direction",
+            "state": {
+              "high": "Higher than usual",
+              "low": "Lower than usual"
+            }
+          },
+          "deviation": {
+            "name": "Deviation"
+          },
+          "score": {
+            "name": "Score"
+          }
+        }
+      },
+      "last_night_anomaly": {
+        "name": "Last night anomaly",
+        "state_attributes": {
+          "date": {
+            "name": "Date"
+          },
+          "load": {
+            "name": "Load"
+          },
+          "direction": {
+            "name": "Direction",
+            "state": {
+              "high": "Higher than usual",
+              "low": "Lower than usual"
+            }
+          },
+          "deviation": {
+            "name": "Deviation"
+          },
+          "score": {
+            "name": "Score"
+          }
+        }
+      }
     }
   }
 }

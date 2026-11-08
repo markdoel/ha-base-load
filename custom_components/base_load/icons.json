@@ -1,0 +1,20 @@
+{
+  "entity": {
+    "sensor": {
+      "expected": {"default": "mdi:home-clock"},
+      "current": {"default": "mdi:home-lightning-bolt"},
+      "deviation": {"default": "mdi:plus-minus-variant"},
+      "last_night": {"default": "mdi:weather-night"}
+    },
+    "binary_sensor": {
+      "anomaly": {
+        "default": "mdi:home-alert",
+        "state": {"off": "mdi:home-check"}
+      },
+      "last_night_anomaly": {
+        "default": "mdi:moon-waning-crescent",
+        "state": {"on": "mdi:home-alert"}
+      }
+    }
+  }
+}

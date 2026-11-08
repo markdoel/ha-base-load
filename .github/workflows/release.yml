@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the manifest version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(jq -r .version custom_components/base_load/manifest.json)"
+          if [ "$tag" != "$version" ]; then
+            echo "Tag $tag does not match manifest version $version" >&2
+            exit 1
+          fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

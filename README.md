@@ -1,4 +1,13 @@
+<p align="center">
+  <img src="custom_components/base_load/brand/icon@2x.png" alt="Base Load Monitor icon" width="128">
+</p>
+
 # Base Load Monitor
+
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories/)
+[![CI](https://github.com/markdoel/ha-base-load/actions/workflows/ci.yml/badge.svg)](https://github.com/markdoel/ha-base-load/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/markdoel/ha-base-load)](https://github.com/markdoel/ha-base-load/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Custom integration for Home Assistant that learns the normal night-time base load
 of a household from long-term statistics and reports unusual deviations, in both
@@ -49,11 +58,55 @@ The night being evaluated never enters its own baseline.
 
 ## Installation
 
-HACS: add this repository as a custom repository (category *Integration*), install,
-restart Home Assistant, then add **Base Load Monitor** under
-*Settings → Devices & services*.
+### HACS (recommended)
 
-Manual: copy `custom_components/base_load` into your `config/custom_components`.
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=markdoel&repository=ha-base-load&category=integration)
+
+1. In HACS, open the menu and choose *Custom repositories*.
+2. Add `https://github.com/markdoel/ha-base-load` with category *Integration*.
+3. Install **Base Load Monitor** and restart Home Assistant.
+4. Add the integration under *Settings → Devices & services*.
+
+### Manual
+
+Copy `custom_components/base_load` into your `config/custom_components` folder and
+restart Home Assistant.
+
+## Configuration example
+
+| Field | Example |
+|---|---|
+| Grid power sensor | Smart meter reader (Tibber Pulse, Shelly 3EM, ...) |
+| Local sources | Battery or PV inverter output |
+| Loads to exclude | EV charger, heat pump |
+| Night window | 1 to 5 |
+
+All settings can be changed later via *Configure* on the integration.
+
+## Example automation: morning notification
+
+```yaml
+triggers:
+  - trigger: time
+    at: "06:30:00"
+conditions:
+  - condition: state
+    entity_id: binary_sensor.base_load_last_night_anomaly
+    state: "on"
+actions:
+  - action: notify.notify
+    data:
+      title: Unusual night load
+      message: >
+        Last night the base load was
+        {{ state_attr('binary_sensor.base_load_last_night_anomaly', 'deviation') }} W
+        off the usual level.
+```
+
+## Diagnostics
+
+*Settings → Devices & services → Base Load Monitor → Download diagnostics* returns
+the configuration, the baseline and the latest evaluation. It contains no secrets.
 
 ## Development
 
@@ -62,3 +115,7 @@ pip install -r requirements_test.txt
 pytest
 ruff check custom_components tests
 ```
+
+## License
+
+MIT
