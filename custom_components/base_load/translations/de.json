@@ -1,0 +1,71 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Base Load Monitor",
+        "description": "Lernt die normale Nachtgrundlast aus der Langzeitstatistik und meldet auffällige Abweichungen.",
+        "data": {
+          "name": "Name",
+          "grid_sensor": "Netzleistung",
+          "feed_in_sensors": "Eigene Quellen (PV, Batterie)",
+          "excluded_sensors": "Herauszurechnende Verbraucher (z. B. Wallbox)",
+          "night_start": "Beginn Nachtfenster",
+          "night_end": "Ende Nachtfenster",
+          "lookback_weeks": "Lernzeitraum (Wochen)",
+          "sensitivity": "Empfindlichkeit (robuste Sigma)",
+          "min_deviation": "Mindestabweichung",
+          "excluded_threshold": "Schwelle für herausgerechnete Verbraucher"
+        },
+        "data_description": {
+          "grid_sensor": "Netzbezug in W. Negative Werte bedeuten Einspeisung.",
+          "feed_in_sensors": "Leistung, die PV-Wechselrichter oder Batterien ins Haus einspeisen. Wird zur Netzleistung addiert.",
+          "excluded_sensors": "Stunden, in denen einer dieser Verbraucher über der Schwelle liegt, werden ignoriert.",
+          "night_start": "Volle Stunde, Ortszeit. Das Fenster darf über Mitternacht gehen.",
+          "sensitivity": "Kleinere Werte melden mehr Abweichungen. 3 ist ein guter Start.",
+          "min_deviation": "Kleinere Abweichungen werden nie gemeldet."
+        }
+      }
+    },
+    "error": {
+      "duplicate_sensor": "Ein Sensor ist mehrfach ausgewählt.",
+      "empty_window": "Beginn und Ende des Nachtfensters müssen sich unterscheiden."
+    },
+    "abort": {
+      "already_configured": "Diese Netzleistung wird bereits überwacht."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Base Load Monitor Optionen",
+        "data": {
+          "grid_sensor": "Netzleistung",
+          "feed_in_sensors": "Eigene Quellen (PV, Batterie)",
+          "excluded_sensors": "Herauszurechnende Verbraucher (z. B. Wallbox)",
+          "night_start": "Beginn Nachtfenster",
+          "night_end": "Ende Nachtfenster",
+          "lookback_weeks": "Lernzeitraum (Wochen)",
+          "sensitivity": "Empfindlichkeit (robuste Sigma)",
+          "min_deviation": "Mindestabweichung",
+          "excluded_threshold": "Schwelle für herausgerechnete Verbraucher"
+        }
+      }
+    },
+    "error": {
+      "duplicate_sensor": "Ein Sensor ist mehrfach ausgewählt.",
+      "empty_window": "Beginn und Ende des Nachtfensters müssen sich unterscheiden."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "expected": {"name": "Erwartete Grundlast"},
+      "current": {"name": "Aktuelle Grundlast"},
+      "deviation": {"name": "Grundlast-Abweichung"},
+      "last_night": {"name": "Grundlast letzte Nacht"}
+    },
+    "binary_sensor": {
+      "anomaly": {"name": "Grundlast-Anomalie"},
+      "last_night_anomaly": {"name": "Anomalie letzte Nacht"}
+    }
+  }
+}

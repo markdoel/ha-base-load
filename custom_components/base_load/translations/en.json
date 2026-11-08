@@ -1,0 +1,71 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Base Load Monitor",
+        "description": "Learns the normal night-time base load from long-term statistics and flags unusual deviations.",
+        "data": {
+          "name": "Name",
+          "grid_sensor": "Grid power sensor",
+          "feed_in_sensors": "Local sources (PV, battery)",
+          "excluded_sensors": "Loads to exclude (e.g. EV charger)",
+          "night_start": "Night window start",
+          "night_end": "Night window end",
+          "lookback_weeks": "Learning period (weeks)",
+          "sensitivity": "Sensitivity (robust sigma)",
+          "min_deviation": "Minimum deviation",
+          "excluded_threshold": "Excluded load threshold"
+        },
+        "data_description": {
+          "grid_sensor": "Power from the grid in W. Negative values mean export.",
+          "feed_in_sensors": "Power fed into the house by PV inverters or batteries. Added to the grid power.",
+          "excluded_sensors": "Hours in which one of these loads exceeds the threshold are ignored.",
+          "night_start": "Full hour, local time. The window may wrap past midnight.",
+          "sensitivity": "Lower values report more deviations. 3 is a good start.",
+          "min_deviation": "Deviations smaller than this are never reported."
+        }
+      }
+    },
+    "error": {
+      "duplicate_sensor": "A sensor is selected more than once.",
+      "empty_window": "Start and end of the night window must differ."
+    },
+    "abort": {
+      "already_configured": "This grid sensor is already monitored."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Base Load Monitor options",
+        "data": {
+          "grid_sensor": "Grid power sensor",
+          "feed_in_sensors": "Local sources (PV, battery)",
+          "excluded_sensors": "Loads to exclude (e.g. EV charger)",
+          "night_start": "Night window start",
+          "night_end": "Night window end",
+          "lookback_weeks": "Learning period (weeks)",
+          "sensitivity": "Sensitivity (robust sigma)",
+          "min_deviation": "Minimum deviation",
+          "excluded_threshold": "Excluded load threshold"
+        }
+      }
+    },
+    "error": {
+      "duplicate_sensor": "A sensor is selected more than once.",
+      "empty_window": "Start and end of the night window must differ."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "expected": {"name": "Expected base load"},
+      "current": {"name": "Current base load"},
+      "deviation": {"name": "Base load deviation"},
+      "last_night": {"name": "Last night base load"}
+    },
+    "binary_sensor": {
+      "anomaly": {"name": "Base load anomaly"},
+      "last_night_anomaly": {"name": "Last night anomaly"}
+    }
+  }
+}
