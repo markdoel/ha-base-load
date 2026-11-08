@@ -1,9 +1,16 @@
 {
   "domain": "base_load",
   "name": "Base Load Monitor",
-  "codeowners": ["@markdoel"],
+  "categories": [
+    "energy.meters_monitoring"
+  ],
+  "codeowners": [
+    "@markdoel"
+  ],
   "config_flow": true,
-  "dependencies": ["recorder"],
+  "dependencies": [
+    "recorder"
+  ],
   "documentation": "https://github.com/markdoel/ha-base-load",
   "integration_type": "service",
   "iot_class": "calculated",
