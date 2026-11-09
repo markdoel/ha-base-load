@@ -256,28 +256,55 @@ def build_baseline(
     return baseline
 
 
-def last_night_load(
-    house_load: Series, now: datetime, start: int, end: int
-) -> tuple[date, float] | None:
-    """Median load of the most recent fully completed night.
+@dataclass(frozen=True, slots=True)
+class NightLoad:
+    """Load of one completed night."""
+
+    night: date
+    load: float | None
+    hours: int
+
+
+def window_hours(start: int, end: int) -> int:
+    """Number of hours in the night window."""
+    return (end - start) % 24
+
+
+def last_completed_night(now: datetime, start: int, end: int) -> date:
+    """Morning date of the most recent night whose window is over."""
+    current = night_date(now, start, end)
+    finished = not in_night_window(now.hour, start, end) and (start > end or now.hour >= end)
+    return current if finished else current - timedelta(days=1)
+
+
+def last_night_load(house_load: Series, now: datetime, start: int, end: int) -> NightLoad:
+    """Median load of the most recent completed night, with its valid hours.
 
     The median of the night hours ignores a single appliance run (a dishwasher
     started at midnight) and only reacts to load that lasts most of the night.
+    The night is always the latest completed one: if it has too little data the
+    caller has to say so instead of quietly showing an older night.
     """
-    nights: dict[date, list[float]] = {}
-    for moment, value in house_load.items():
-        if in_night_window(moment.hour, start, end):
-            nights.setdefault(night_date(moment, start, end), []).append(value)
+    night = last_completed_night(now, start, end)
+    values = [
+        value
+        for moment, value in house_load.items()
+        if in_night_window(moment.hour, start, end) and night_date(moment, start, end) == night
+    ]
+    return NightLoad(night=night, load=median(values) if values else None, hours=len(values))
 
-    current = night_date(now, start, end)
-    current_finished = not in_night_window(now.hour, start, end) and (
-        start > end or now.hour >= end
-    )
-    candidates = [day for day in nights if day < current or (day == current and current_finished)]
-    if not candidates:
+
+def coverage(house_load: Series, nights: Iterable[date], start: int, end: int) -> float | None:
+    """Share of night hours with valid data, over the given nights."""
+    wanted = set(nights)
+    if not wanted:
         return None
-    latest = max(candidates)
-    return latest, median(nights[latest])
+    valid = sum(
+        1
+        for moment in house_load
+        if in_night_window(moment.hour, start, end) and night_date(moment, start, end) in wanted
+    )
+    return min(valid / (len(wanted) * window_hours(start, end)), 1.0)
 
 
 def evaluate(

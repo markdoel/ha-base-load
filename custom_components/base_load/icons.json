@@ -18,6 +18,15 @@
       },
       "last_night_cause": {
         "default": "mdi:magnify-expand"
+      },
+      "data_quality": {
+        "default": "mdi:database-check"
+      },
+      "annual_cost": {
+        "default": "mdi:cash-multiple"
+      },
+      "deviation_cost": {
+        "default": "mdi:cash-plus"
       }
     },
     "binary_sensor": {
@@ -31,6 +40,12 @@
         "default": "mdi:moon-waning-crescent",
         "state": {
           "on": "mdi:home-alert"
+        }
+      },
+      "data_incomplete": {
+        "default": "mdi:database-alert",
+        "state": {
+          "off": "mdi:database-check"
         }
       }
     }

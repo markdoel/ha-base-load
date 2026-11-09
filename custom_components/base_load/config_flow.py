@@ -22,6 +22,8 @@ from .const import (
     CONF_MIN_DEVIATION,
     CONF_NIGHT_END,
     CONF_NIGHT_START,
+    CONF_PRESENCE_ENTITY,
+    CONF_PRICE_ENTITY,
     CONF_SENSITIVITY,
     DEFAULT_EXCLUDED_THRESHOLD,
     DEFAULT_HALF_LIFE_DAYS,
@@ -32,6 +34,7 @@ from .const import (
     DEFAULT_NIGHT_START,
     DEFAULT_SENSITIVITY,
     DOMAIN,
+    PRESENCE_DOMAINS,
 )
 
 _POWER_SENSOR = selector.EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.POWER)
@@ -80,6 +83,16 @@ def _sources_schema(defaults: dict[str, Any]) -> dict[vol.Marker, Any]:
             selector.EntitySelectorConfig(
                 domain="sensor", device_class=SensorDeviceClass.POWER, multiple=True
             )
+        ),
+        vol.Optional(
+            CONF_PRESENCE_ENTITY,
+            description={"suggested_value": defaults.get(CONF_PRESENCE_ENTITY)},
+        ): selector.EntitySelector(selector.EntitySelectorConfig(domain=PRESENCE_DOMAINS)),
+        vol.Optional(
+            CONF_PRICE_ENTITY,
+            description={"suggested_value": defaults.get(CONF_PRICE_ENTITY)},
+        ): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain=["sensor", "input_number"])
         ),
     }
 

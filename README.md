@@ -68,6 +68,42 @@ the score stays below the anomaly threshold.
 Do not select a group sensor together with its members, the deviation would be
 counted twice.
 
+## Presence and holidays
+
+Select a presence entity to skip nights in which nobody was home:
+
+| Entity | Away when |
+|---|---|
+| `zone.home` | 0 persons in the zone |
+| `person.*`, `group.*`, `device_tracker.*` | state is not `home` |
+| `input_boolean.*`, `binary_sensor.*` | `on` (a holiday switch) |
+
+A night counts as away if nobody was home for at least half of the window. Away
+nights are not evaluated (status `away`) and never enter the baseline. Presence is
+read back from the recorder about 10 days and remembered after that.
+
+## Cost
+
+Select a price entity (sensor or input number, `EUR/kWh`, `ct/kWh` or similar) to get:
+
+- **Base load cost per year**: the weekly average of the baseline, running all year.
+- **Deviation cost per year**: what last night's extra load would cost if it stayed,
+  plus the cost of last night itself as an attribute.
+
+Dynamic prices (Tibber, aWATTar, ...) are averaged over the last 30 days from the
+long-term statistics. Entities without statistics use their current value.
+
+## Reliability
+
+- **Renamed entities are followed.** Renaming a configured sensor updates the settings.
+- **Removed entities raise a repair** under *Settings → System → Repairs*.
+- **Data quality** (diagnostic sensor) is the share of valid night hours in the
+  learning period. **Data incomplete** (diagnostic binary sensor) turns on if the
+  quality drops below 50 %, the last night had less than half its hours, or updates
+  fail. A night without enough data is never reported as normal.
+- **Short outages are bridged.** Up to six failed updates in a row keep the last
+  result (marked stale). The baseline is stored and survives restarts.
+
 ## Entities
 
 | Entity | Description |
@@ -79,7 +115,11 @@ counted twice.
 | `sensor.<name>_probable_cause` | Suggested cause for the running night, attributes `causes`, `unexplained`, `pattern`, `onset` |
 | `sensor.<name>_last_night_probable_cause` | Suggested cause for the last completed night |
 | `binary_sensor.<name>_base_load_anomaly` | On while the current night deviates. Attribute `status`: `monitoring`, `learning`, `outside_night_window`, `excluded_load_active`, `no_data` |
-| `binary_sensor.<name>_last_night_anomaly` | Verdict for the last completed night, ideal for a morning notification |
+| `binary_sensor.<name>_last_night_anomaly` | Verdict for the last completed night, ideal for a morning notification. Attribute `status`: `evaluated`, `away`, `no_data`, `learning` |
+| `sensor.<name>_base_load_cost_per_year` | Only with a price entity |
+| `sensor.<name>_deviation_cost_per_year` | Only with a price entity |
+| `sensor.<name>_data_quality` | Diagnostic, share of valid night hours |
+| `binary_sensor.<name>_data_incomplete` | Diagnostic, attribute `reasons` |
 
 ## Requirements
 
@@ -134,6 +174,12 @@ actions:
         off the usual level. Probable cause:
         {{ states('sensor.base_load_last_night_probable_cause') }}
 ```
+
+## Dashboard
+
+`dashboards/base_load.yaml` contains a ready-made view. Open a dashboard, choose
+*Edit → Raw configuration editor*, paste the view under `views:` and replace
+`base_load` in the entity IDs with the name of your entry if needed.
 
 ## Diagnostics
 

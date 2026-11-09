@@ -16,7 +16,9 @@
           "min_deviation": "Mindestabweichung",
           "excluded_threshold": "Schwelle für herausgerechnete Verbraucher",
           "candidate_sensors": "Geräte für die Ursachenanalyse",
-          "half_life_days": "Halbwertszeit der Baseline"
+          "half_life_days": "Halbwertszeit der Baseline",
+          "presence_entity": "Anwesenheit",
+          "price_entity": "Strompreis"
         },
         "data_description": {
           "grid_sensor": "Netzbezug in W. Negative Werte bedeuten Einspeisung.",
@@ -26,7 +28,9 @@
           "sensitivity": "Kleinere Werte melden mehr Abweichungen. 3 ist ein guter Start.",
           "min_deviation": "Kleinere Abweichungen werden nie gemeldet.",
           "candidate_sensors": "Gemessene Geräte (Steckdosen, Zwischenzähler), die bei einer Abweichung geprüft werden. Keinen Gruppensensor zusammen mit seinen Mitgliedern wählen.",
-          "half_life_days": "So alte Nächte zählen nur noch halb. Kleinere Werte folgen dauerhaften Änderungen (Heizsaison) schneller. 0 gewichtet alle Nächte gleich."
+          "half_life_days": "So alte Nächte zählen nur noch halb. Kleinere Werte folgen dauerhaften Änderungen (Heizsaison) schneller. 0 gewichtet alle Nächte gleich.",
+          "presence_entity": "Nächte, in denen niemand zu Hause war, werden übersprungen und nicht in die Baseline übernommen. zone.home (abwesend bei 0 Personen), eine Person oder Gruppe (abwesend, wenn nicht zu Hause) oder ein Urlaubsschalter (an bedeutet abwesend).",
+          "price_entity": "Sensor oder Zahl mit dem Preis pro kWh, z. B. EUR/kWh oder ct/kWh. Dynamische Preise werden aus der Statistik über 30 Tage gemittelt."
         }
       }
     },
@@ -53,11 +57,15 @@
           "min_deviation": "Mindestabweichung",
           "excluded_threshold": "Schwelle für herausgerechnete Verbraucher",
           "candidate_sensors": "Geräte für die Ursachenanalyse",
-          "half_life_days": "Halbwertszeit der Baseline"
+          "half_life_days": "Halbwertszeit der Baseline",
+          "presence_entity": "Anwesenheit",
+          "price_entity": "Strompreis"
         },
         "data_description": {
           "candidate_sensors": "Gemessene Geräte (Steckdosen, Zwischenzähler), die bei einer Abweichung geprüft werden. Keinen Gruppensensor zusammen mit seinen Mitgliedern wählen.",
-          "half_life_days": "So alte Nächte zählen nur noch halb. Kleinere Werte folgen dauerhaften Änderungen (Heizsaison) schneller. 0 gewichtet alle Nächte gleich."
+          "half_life_days": "So alte Nächte zählen nur noch halb. Kleinere Werte folgen dauerhaften Änderungen (Heizsaison) schneller. 0 gewichtet alle Nächte gleich.",
+          "presence_entity": "Nächte, in denen niemand zu Hause war, werden übersprungen und nicht in die Baseline übernommen. zone.home (abwesend bei 0 Personen), eine Person oder Gruppe (abwesend, wenn nicht zu Hause) oder ein Urlaubsschalter (an bedeutet abwesend).",
+          "price_entity": "Sensor oder Zahl mit dem Preis pro kWh, z. B. EUR/kWh oder ct/kWh. Dynamische Preise werden aus der Statistik über 30 Tage gemittelt."
         }
       }
     },
@@ -198,6 +206,62 @@
             "name": "Beginn"
           }
         }
+      },
+      "data_quality": {
+        "name": "Datenqualität",
+        "state_attributes": {
+          "last_night_hours": {
+            "name": "Gültige Stunden letzte Nacht"
+          },
+          "window_hours": {
+            "name": "Stunden im Nachtfenster"
+          },
+          "stale": {
+            "name": "Veraltet"
+          }
+        }
+      },
+      "annual_cost": {
+        "name": "Grundlast-Kosten pro Jahr",
+        "state_attributes": {
+          "power": {
+            "name": "Leistung"
+          },
+          "price_per_kwh": {
+            "name": "Preis pro kWh"
+          },
+          "price_source": {
+            "name": "Preisquelle",
+            "state": {
+              "statistics": "30-Tage-Mittel",
+              "current": "Aktueller Preis"
+            }
+          }
+        }
+      },
+      "deviation_cost": {
+        "name": "Mehrkosten der Abweichung pro Jahr",
+        "state_attributes": {
+          "power": {
+            "name": "Leistung"
+          },
+          "price_per_kwh": {
+            "name": "Preis pro kWh"
+          },
+          "price_source": {
+            "name": "Preisquelle",
+            "state": {
+              "statistics": "30-Tage-Mittel",
+              "current": "Aktueller Preis"
+            }
+          },
+          "last_night_cost": {
+            "name": "Kosten letzte Nacht"
+          },
+          "date": {
+            "name": "Datum"
+          }
+        }
       }
     },
     "binary_sensor": {
@@ -211,7 +275,8 @@
               "learning": "Lernphase",
               "outside_night_window": "Außerhalb des Nachtfensters",
               "excluded_load_active": "Ausgeschlossener Verbraucher aktiv",
-              "no_data": "Keine Daten"
+              "no_data": "Keine Daten",
+              "away": "Niemand zu Hause"
             }
           },
           "direction": {
@@ -250,9 +315,47 @@
           },
           "score": {
             "name": "Score"
+          },
+          "status": {
+            "name": "Status",
+            "state": {
+              "away": "Niemand zu Hause",
+              "no_data": "Keine Daten",
+              "learning": "Lernphase",
+              "evaluated": "Ausgewertet"
+            }
+          },
+          "hours": {
+            "name": "Gültige Stunden"
+          }
+        }
+      },
+      "data_incomplete": {
+        "name": "Daten unvollständig",
+        "state_attributes": {
+          "reasons": {
+            "name": "Gründe"
+          },
+          "data_quality": {
+            "name": "Datenqualität"
+          },
+          "last_night_hours": {
+            "name": "Gültige Stunden letzte Nacht"
+          },
+          "window_hours": {
+            "name": "Stunden im Nachtfenster"
+          },
+          "failed_updates": {
+            "name": "Fehlgeschlagene Updates"
           }
         }
       }
+    }
+  },
+  "issues": {
+    "sensor_missing": {
+      "title": "Base Load Monitor: Sensoren fehlen",
+      "description": "{title} nutzt Entitäten, die es nicht mehr gibt: {entities}. Bitte unter Konfigurieren Ersatz auswählen, sonst sind die Ergebnisse unvollständig."
     }
   }
 }

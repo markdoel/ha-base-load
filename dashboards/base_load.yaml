@@ -1,0 +1,61 @@
+# Lovelace view for Base Load Monitor. Paste under "views:" in the raw
+# configuration editor. Entity IDs assume the entry is called "Base Load".
+title: Base load
+path: base-load
+icon: mdi:home-lightning-bolt
+type: sections
+max_columns: 3
+sections:
+  - type: grid
+    cards:
+      - type: heading
+        heading: Tonight
+      - type: tile
+        entity: sensor.base_load_current_base_load
+      - type: tile
+        entity: sensor.base_load_expected_base_load
+      - type: tile
+        entity: binary_sensor.base_load_base_load_anomaly
+      - type: tile
+        entity: sensor.base_load_base_load_deviation
+      - type: markdown
+        content: >-
+          **Probable cause:** {{ states('sensor.base_load_probable_cause') }}
+      - type: history-graph
+        hours_to_show: 24
+        entities:
+          - entity: sensor.base_load_current_base_load
+          - entity: sensor.base_load_expected_base_load
+  - type: grid
+    cards:
+      - type: heading
+        heading: Last nights
+      - type: tile
+        entity: sensor.base_load_last_night_base_load
+      - type: tile
+        entity: binary_sensor.base_load_last_night_anomaly
+      - type: markdown
+        content: >-
+          **Last night ({{ state_attr('sensor.base_load_last_night_probable_cause', 'date') }}):**
+          {{ states('sensor.base_load_last_night_probable_cause') }}
+      - type: statistics-graph
+        title: Night load, 14 days
+        days_to_show: 14
+        period: day
+        stat_types: [mean]
+        chart_type: line
+        entities:
+          - entity: sensor.base_load_last_night_base_load
+          - entity: sensor.base_load_expected_base_load
+  - type: grid
+    cards:
+      - type: heading
+        heading: Cost and data
+      - type: tile
+        entity: sensor.base_load_base_load_cost_per_year
+      - type: tile
+        entity: sensor.base_load_deviation_cost_per_year
+      - type: tile
+        entity: sensor.base_load_data_quality
+      - type: tile
+        entity: binary_sensor.base_load_data_incomplete

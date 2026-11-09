@@ -47,3 +47,32 @@ DIRECTION_LOW: Final = "low"
 
 # How far before the night window the onset of a deviation is searched.
 ONSET_LOOKBACK: Final = timedelta(hours=3)
+
+CONF_PRESENCE_ENTITY: Final = "presence_entity"
+CONF_PRICE_ENTITY: Final = "price_entity"
+
+# Domains accepted for the presence entity and how "away" is read from them.
+PRESENCE_DOMAINS: Final = [
+    "zone",
+    "person",
+    "group",
+    "device_tracker",
+    "input_boolean",
+    "binary_sensor",
+]
+# A night counts as away if nobody was home for at least this share of it.
+AWAY_SHARE: Final = 0.5
+
+# Average price over this period, from long-term statistics if available.
+PRICE_LOOKBACK: Final = timedelta(days=30)
+HOURS_PER_YEAR: Final = 8760
+
+# A night needs at least this share of its hours with valid data to be judged.
+MIN_NIGHT_COVERAGE: Final = 0.5
+# Below this share of valid night hours in the learning period, data is flagged.
+MIN_DATA_QUALITY: Final = 0.5
+# Consecutive failed updates that are bridged with the last good result.
+MAX_FAILED_UPDATES: Final = 6
+
+STORAGE_VERSION: Final = 1
+ISSUE_SENSOR_MISSING: Final = "sensor_missing"

@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfPower
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -21,6 +21,7 @@ from homeassistant.util import dt as dt_util
 from .causes import Explanation
 from .const import DAY_TYPE_WEEKEND, DAY_TYPE_WORKDAY
 from .coordinator import BaseLoadConfigEntry, BaseLoadData
+from .cost import annual_cost
 from .entity import BaseLoadEntity
 
 
@@ -104,9 +105,25 @@ SENSORS: tuple[BaseLoadSensorDescription, ...] = (
         key="last_night",
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
         value_fn=lambda data: data.last_night_load,
         attrs_fn=_last_night_attrs,
+    ),
+    BaseLoadSensorDescription(
+        key="data_quality",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
+        value_fn=lambda data: (
+            None if data.data_quality is None else round(data.data_quality * 100, 1)
+        ),
+        attrs_fn=lambda data: {
+            "last_night_hours": data.last_night_hours,
+            "window_hours": data.window_hours,
+            "stale": data.stale,
+        },
     ),
 )
 
@@ -124,6 +141,11 @@ async def async_setup_entry(
         BaseLoadCauseSensor(coordinator, "cause", last_night=False),
         BaseLoadCauseSensor(coordinator, "last_night_cause", last_night=True),
     ]
+    if coordinator.price_entity:
+        entities += [
+            BaseLoadCostSensor(coordinator, "annual_cost", deviation=False),
+            BaseLoadCostSensor(coordinator, "deviation_cost", deviation=True),
+        ]
     async_add_entities(entities)
 
 
@@ -257,4 +279,53 @@ class BaseLoadCauseSensor(BaseLoadEntity, SensorEntity):
             "pattern": pattern.shape if pattern else None,
             "onset": pattern.onset if pattern else None,
         }
+        return attrs
+
+
+class BaseLoadCostSensor(BaseLoadEntity, SensorEntity):
+    """Yearly cost of the base load, or of last night's deviation if it stayed."""
+
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, coordinator, key: str, deviation: bool) -> None:
+        super().__init__(coordinator, key)
+        self._deviation = deviation
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        return self.coordinator.data.currency or self.hass.config.currency
+
+    def _watts(self) -> float | None:
+        data = self.coordinator.data
+        if not self._deviation:
+            return data.weekly_base_load
+        evaluation = data.last_night_evaluation
+        if evaluation is None:
+            return None
+        # Only extra load costs money; missing load is reported, not credited.
+        return max(evaluation.deviation, 0.0)
+
+    @property
+    def native_value(self) -> float | None:
+        data = self.coordinator.data
+        watts = self._watts()
+        if watts is None or data.price is None:
+            return None
+        return round(annual_cost(watts, data.price), 2)
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any]:
+        data = self.coordinator.data
+        watts = self._watts()
+        attrs: dict[str, Any] = {
+            "power": None if watts is None else round(watts),
+            "price_per_kwh": None if data.price is None else round(data.price, 4),
+            "price_source": data.price_source,
+        }
+        if self._deviation:
+            attrs["date"] = data.last_night_date
+            if watts is not None and data.price is not None:
+                # What last night's extra load cost during the night window.
+                attrs["last_night_cost"] = round(watts / 1000 * data.window_hours * data.price, 3)
         return attrs

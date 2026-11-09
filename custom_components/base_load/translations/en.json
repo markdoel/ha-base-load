@@ -16,7 +16,9 @@
           "min_deviation": "Minimum deviation",
           "excluded_threshold": "Excluded load threshold",
           "candidate_sensors": "Devices for cause analysis",
-          "half_life_days": "Half life of the baseline"
+          "half_life_days": "Half life of the baseline",
+          "presence_entity": "Presence",
+          "price_entity": "Electricity price"
         },
         "data_description": {
           "grid_sensor": "Power from the grid in W. Negative values mean export.",
@@ -26,7 +28,9 @@
           "sensitivity": "Lower values report more deviations. 3 is a good start.",
           "min_deviation": "Deviations smaller than this are never reported.",
           "candidate_sensors": "Measured devices (plugs, sub-meters) that are checked when the base load deviates. Do not combine a group sensor with its members.",
-          "half_life_days": "Nights this many days old count half. Lower values follow lasting changes (heating season) faster. 0 weighs all nights equally."
+          "half_life_days": "Nights this many days old count half. Lower values follow lasting changes (heating season) faster. 0 weighs all nights equally.",
+          "presence_entity": "Nights in which nobody was home are skipped and left out of the baseline. zone.home (away at 0 persons), a person or group (away unless home), or a holiday switch (on means away).",
+          "price_entity": "Sensor or number with the price per kWh, e.g. EUR/kWh or ct/kWh. Dynamic prices are averaged over 30 days from statistics."
         }
       }
     },
@@ -53,11 +57,15 @@
           "min_deviation": "Minimum deviation",
           "excluded_threshold": "Excluded load threshold",
           "candidate_sensors": "Devices for cause analysis",
-          "half_life_days": "Half life of the baseline"
+          "half_life_days": "Half life of the baseline",
+          "presence_entity": "Presence",
+          "price_entity": "Electricity price"
         },
         "data_description": {
           "candidate_sensors": "Measured devices (plugs, sub-meters) that are checked when the base load deviates. Do not combine a group sensor with its members.",
-          "half_life_days": "Nights this many days old count half. Lower values follow lasting changes (heating season) faster. 0 weighs all nights equally."
+          "half_life_days": "Nights this many days old count half. Lower values follow lasting changes (heating season) faster. 0 weighs all nights equally.",
+          "presence_entity": "Nights in which nobody was home are skipped and left out of the baseline. zone.home (away at 0 persons), a person or group (away unless home), or a holiday switch (on means away).",
+          "price_entity": "Sensor or number with the price per kWh, e.g. EUR/kWh or ct/kWh. Dynamic prices are averaged over 30 days from statistics."
         }
       }
     },
@@ -198,6 +206,62 @@
             "name": "Onset"
           }
         }
+      },
+      "data_quality": {
+        "name": "Data quality",
+        "state_attributes": {
+          "last_night_hours": {
+            "name": "Valid hours last night"
+          },
+          "window_hours": {
+            "name": "Hours in night window"
+          },
+          "stale": {
+            "name": "Stale"
+          }
+        }
+      },
+      "annual_cost": {
+        "name": "Base load cost per year",
+        "state_attributes": {
+          "power": {
+            "name": "Power"
+          },
+          "price_per_kwh": {
+            "name": "Price per kWh"
+          },
+          "price_source": {
+            "name": "Price source",
+            "state": {
+              "statistics": "30-day average",
+              "current": "Current price"
+            }
+          }
+        }
+      },
+      "deviation_cost": {
+        "name": "Deviation cost per year",
+        "state_attributes": {
+          "power": {
+            "name": "Power"
+          },
+          "price_per_kwh": {
+            "name": "Price per kWh"
+          },
+          "price_source": {
+            "name": "Price source",
+            "state": {
+              "statistics": "30-day average",
+              "current": "Current price"
+            }
+          },
+          "last_night_cost": {
+            "name": "Cost last night"
+          },
+          "date": {
+            "name": "Date"
+          }
+        }
       }
     },
     "binary_sensor": {
@@ -211,7 +275,8 @@
               "learning": "Learning",
               "outside_night_window": "Outside night window",
               "excluded_load_active": "Excluded load active",
-              "no_data": "No data"
+              "no_data": "No data",
+              "away": "Nobody home"
             }
           },
           "direction": {
@@ -250,9 +315,47 @@
           },
           "score": {
             "name": "Score"
+          },
+          "status": {
+            "name": "Status",
+            "state": {
+              "away": "Nobody home",
+              "no_data": "No data",
+              "learning": "Learning",
+              "evaluated": "Evaluated"
+            }
+          },
+          "hours": {
+            "name": "Valid hours"
+          }
+        }
+      },
+      "data_incomplete": {
+        "name": "Data incomplete",
+        "state_attributes": {
+          "reasons": {
+            "name": "Reasons"
+          },
+          "data_quality": {
+            "name": "Data quality"
+          },
+          "last_night_hours": {
+            "name": "Valid hours last night"
+          },
+          "window_hours": {
+            "name": "Hours in night window"
+          },
+          "failed_updates": {
+            "name": "Failed updates"
           }
         }
       }
+    }
+  },
+  "issues": {
+    "sensor_missing": {
+      "title": "Base Load Monitor: sensors missing",
+      "description": "{title} uses entities that no longer exist: {entities}. Select replacements under Configure, otherwise the results are incomplete."
     }
   }
 }

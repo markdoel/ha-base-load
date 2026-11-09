@@ -45,7 +45,7 @@ def fake_statistics(
 
     def _impl(hass, start, end, statistic_ids, period, units, types):
         step = timedelta(hours=1) if period == "hour" else timedelta(minutes=5)
-        rows = {sid: [] for sid in statistic_ids}
+        rows = {sid: [] for sid in statistic_ids if sid in (GRID, BATTERY, WALLBOX, HEATER)}
         moment = start.replace(minute=0, second=0, microsecond=0)
         recent_cutoff = end - timedelta(minutes=45)
         while moment < end:
@@ -67,6 +67,8 @@ def fake_statistics(
             if charging_switches and period == "5minute":
                 values[WALLBOX], lows[WALLBOX], highs[WALLBOX] = 900.0, 0.0, 1850.0
             for sid in statistic_ids:
+                if sid not in values:
+                    continue
                 rows[sid].append(
                     {
                         "start": moment.timestamp(),
@@ -87,16 +89,38 @@ async def _setup(
     charging_now: bool = False,
     heater_now: float = 20.0,
     charging_switches: bool = False,
+    data: dict | None = None,
+    presence_history: list | None = None,
 ):
-    entry = MockConfigEntry(domain=DOMAIN, title="Base Load", data=ENTRY_DATA, unique_id=GRID)
+    entry = MockConfigEntry(
+        domain=DOMAIN, title="Base Load", data=data or ENTRY_DATA, unique_id=GRID
+    )
     entry.add_to_hass(hass)
-    with patch(
-        "custom_components.base_load.coordinator.statistics_during_period",
-        side_effect=fake_statistics(current_grid, charging_now, heater_now, charging_switches),
+    with (
+        patch(
+            "custom_components.base_load.coordinator.statistics_during_period",
+            side_effect=fake_statistics(current_grid, charging_now, heater_now, charging_switches),
+        ),
+        patch(
+            "custom_components.base_load.coordinator.history.get_significant_states",
+            return_value=_presence_states(presence_history or []),
+        ),
     ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     return entry
+
+
+def _presence_states(changes: list[tuple[datetime, str]]):
+    """Fake recorder history for zone.home."""
+    from homeassistant.core import State
+
+    states = []
+    for moment, value in changes:
+        state = State("zone.home", value)
+        object.__setattr__(state, "last_changed", moment)
+        states.append(state)
+    return {"zone.home": states}
 
 
 @pytest.fixture
@@ -253,3 +277,94 @@ async def test_diagnostics_include_explanation(hass: HomeAssistant, night) -> No
     diag = await async_get_config_entry_diagnostics(hass, entry)
     assert diag["explanation"]["pattern"]["shape"] == "constant"
     assert diag["candidate_sensors"] == [HEATER]
+
+
+BERLIN = dt_util.get_time_zone("Europe/Berlin")
+
+
+async def test_away_night_is_skipped(hass: HomeAssistant, night) -> None:
+    hass.states.async_set("zone.home", "0")
+    data = {**ENTRY_DATA, "presence_entity": "zone.home"}
+    history = [
+        (datetime(2026, 10, 20, tzinfo=BERLIN), "2"),
+        (datetime(2026, 11, 2, 18, tzinfo=BERLIN), "0"),
+    ]
+    await _setup(hass, current_grid=120.0, data=data, presence_history=history)
+
+    anomaly = hass.states.get("binary_sensor.base_load_base_load_anomaly")
+    last = hass.states.get("binary_sensor.base_load_last_night_anomaly")
+    assert anomaly.state == "off"
+    assert anomaly.attributes["status"] == "away"
+    assert last.attributes["status"] == "away"
+    assert last.state == "unknown"
+
+
+async def test_cost_sensors(hass: HomeAssistant, night) -> None:
+    hass.states.async_set("input_number.price", "0.40", {"unit_of_measurement": "EUR/kWh"})
+    data = {**ENTRY_DATA, "price_entity": "input_number.price"}
+    await _setup(hass, current_grid=262.0, data=data)
+
+    cost = hass.states.get("sensor.base_load_base_load_cost_per_year")
+    assert cost.attributes["unit_of_measurement"] == "EUR"
+    assert cost.attributes["price_source"] == "current"
+    # About 310 W all year at 0.40 EUR/kWh.
+    assert 1000 < float(cost.state) < 1200
+    assert hass.states.get("sensor.base_load_deviation_cost_per_year") is not None
+
+
+async def test_data_quality_ok(hass: HomeAssistant, night) -> None:
+    await _setup(hass, current_grid=262.0)
+    quality = hass.states.get("sensor.base_load_data_quality")
+    incomplete = hass.states.get("binary_sensor.base_load_data_incomplete")
+    assert float(quality.state) > 95
+    assert incomplete.state == "off"
+
+
+async def test_failed_update_keeps_last_result(hass: HomeAssistant, night) -> None:
+    entry = await _setup(hass, current_grid=262.0)
+    coordinator = entry.runtime_data
+
+    with patch(
+        "custom_components.base_load.coordinator.statistics_during_period",
+        side_effect=RuntimeError("recorder busy"),
+    ):
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    expected = hass.states.get("sensor.base_load_expected_base_load")
+    incomplete = hass.states.get("binary_sensor.base_load_data_incomplete")
+    assert expected.state not in ("unavailable", "unknown")
+    assert incomplete.state == "on"
+    assert "stale" in incomplete.attributes["reasons"]
+
+
+async def test_missing_sensor_raises_repair(hass: HomeAssistant, night) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    entry = await _setup(hass, current_grid=262.0)
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"sensor_missing_{entry.entry_id}")
+    # No test entity exists for the configured sensors.
+    assert issue is not None
+    assert GRID in issue.translation_placeholders["entities"]
+
+    for entity_id in (GRID, BATTERY, WALLBOX, HEATER):
+        hass.states.async_set(entity_id, "0")
+    entry.runtime_data.check_entities()
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"sensor_missing_{entry.entry_id}") is None
+
+
+async def test_renamed_sensor_is_followed(hass: HomeAssistant, night) -> None:
+    from homeassistant.helpers import entity_registry as er
+
+    registry = er.async_get(hass)
+    registry.async_get_or_create("sensor", "test", "heater", suggested_object_id="heater_power")
+    entry = await _setup(hass, current_grid=262.0)
+
+    with patch(
+        "custom_components.base_load.coordinator.statistics_during_period",
+        side_effect=fake_statistics(262.0),
+    ):
+        registry.async_update_entity(HEATER, new_entity_id="sensor.heater_renamed")
+        await hass.async_block_till_done()
+
+    assert entry.options["candidate_sensors"] == ["sensor.heater_renamed"]

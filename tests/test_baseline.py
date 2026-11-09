@@ -8,9 +8,11 @@ import pytest
 from custom_components.base_load.baseline import (
     MIN_SIGMA_W,
     MeteredSeries,
+    NightLoad,
     age_weight,
     build_baseline,
     combine_house_load,
+    coverage,
     day_type,
     evaluate,
     in_night_window,
@@ -18,6 +20,7 @@ from custom_components.base_load.baseline import (
     night_date,
     robust_stats,
     weighted_median,
+    window_hours,
 )
 
 TZ = ZoneInfo("Europe/Berlin")
@@ -201,27 +204,42 @@ def test_last_night_load_skips_running_night():
 
     # Sunday 02:30: the current night is still running.
     running = datetime(2026, 11, 8, 2, 30, tzinfo=TZ)
-    assert last_night_load(load, running, 1, 5) == (date(2026, 11, 7), 400.0)
+    assert last_night_load(load, running, 1, 5) == NightLoad(date(2026, 11, 7), 400.0, 4)
 
     # Sunday 06:00: the night ending Sunday is complete.
     done = datetime(2026, 11, 8, 6, 0, tzinfo=TZ)
-    assert last_night_load(load, done, 1, 5) == (date(2026, 11, 8), 800.0)
+    assert last_night_load(load, done, 1, 5) == NightLoad(date(2026, 11, 8), 800.0, 2)
 
 
 def test_last_night_load_before_window_on_same_day():
     load = {at(7, h): 400.0 for h in range(1, 5)}
     # Sunday 00:30, window 1-5: the night ending Sunday has not started.
     early = datetime(2026, 11, 8, 0, 30, tzinfo=TZ)
-    assert last_night_load(load, early, 1, 5) == (date(2026, 11, 7), 400.0)
+    assert last_night_load(load, early, 1, 5) == NightLoad(date(2026, 11, 7), 400.0, 4)
 
 
 def test_last_night_load_without_data():
     now = datetime(2026, 11, 8, 12, tzinfo=TZ)
-    assert last_night_load({}, now, 1, 5) is None
+    assert last_night_load({}, now, 1, 5) == NightLoad(date(2026, 11, 8), None, 0)
 
 
 def test_last_night_load_ignores_single_appliance_run():
     """Dishwasher at 01:00, otherwise a normal night."""
     load = {at(9, 1): 840.0, at(9, 2): 476.0, at(9, 3): 429.0, at(9, 4): 421.0}
     done = datetime(2026, 11, 9, 7, 0, tzinfo=TZ)
-    assert last_night_load(load, done, 1, 5) == (date(2026, 11, 9), 452.5)
+    assert last_night_load(load, done, 1, 5) == NightLoad(date(2026, 11, 9), 452.5, 4)
+
+
+def test_last_night_does_not_fall_back_to_older_nights():
+    load = {at(7, h): 400.0 for h in range(1, 5)}
+    done = datetime(2026, 11, 8, 6, 0, tzinfo=TZ)
+    assert last_night_load(load, done, 1, 5) == NightLoad(date(2026, 11, 8), None, 0)
+
+
+def test_window_hours_and_coverage():
+    assert window_hours(1, 5) == 4
+    assert window_hours(23, 5) == 6
+    load = {at(7, h): 400.0 for h in range(1, 5)} | {at(8, 1): 400.0}
+    nights = [date(2026, 11, 7), date(2026, 11, 8)]
+    assert coverage(load, nights, 1, 5) == 5 / 8
+    assert coverage(load, [], 1, 5) is None
