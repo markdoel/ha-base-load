@@ -40,8 +40,10 @@ house load = grid import + local sources (PV, battery) - excluded loads
    against outliers. Recent nights weigh more (half life 14 days by default), so the
    baseline follows lasting changes like the start of the heating season within
    about two weeks instead of a month.
-6. During the night the mean of the last 30 minutes (5-minute statistics) is compared
-   with the baseline. An anomaly needs both a robust score above the sensitivity and
+6. During the night the median of the last hour (5-minute statistics) is compared
+   with the baseline. For the last completed night the median of its hours is used.
+   A single appliance run, like a dishwasher started at midnight, therefore does not
+   count as base load, a load that lasts most of the night does. An anomaly needs both a robust score above the sensitivity and
    an absolute deviation above the minimum.
 
 The night being evaluated never enters its own baseline.
@@ -71,9 +73,9 @@ counted twice.
 | Entity | Description |
 |---|---|
 | `sensor.<name>_expected_base_load` | Baseline median for the current day type, attributes for both day types |
-| `sensor.<name>_current_base_load` | House load, mean of the last 30 minutes |
+| `sensor.<name>_current_base_load` | House load, median of the last hour |
 | `sensor.<name>_base_load_deviation` | Deviation from the baseline during the night window, with `score` and `direction` |
-| `sensor.<name>_last_night_base_load` | Mean house load of the last completed night |
+| `sensor.<name>_last_night_base_load` | Median house load of the last completed night |
 | `sensor.<name>_probable_cause` | Suggested cause for the running night, attributes `causes`, `unexplained`, `pattern`, `onset` |
 | `sensor.<name>_last_night_probable_cause` | Suggested cause for the last completed night |
 | `binary_sensor.<name>_base_load_anomaly` | On while the current night deviates. Attribute `status`: `monitoring`, `learning`, `outside_night_window`, `excluded_load_active`, `no_data` |

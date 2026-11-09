@@ -14,7 +14,7 @@ from custom_components.base_load.baseline import (
     day_type,
     evaluate,
     in_night_window,
-    last_night_mean,
+    last_night_load,
     night_date,
     robust_stats,
     weighted_median,
@@ -195,26 +195,33 @@ def test_evaluate_respects_min_deviation_on_quiet_baseline():
     assert not evaluate(440, stats, sensitivity=3, min_deviation=60).is_anomaly
 
 
-def test_last_night_mean_skips_running_night():
+def test_last_night_load_skips_running_night():
     load = {at(7, h): 400.0 for h in range(1, 5)}
     load |= {at(8, 1): 800.0, at(8, 2): 800.0}
 
     # Sunday 02:30: the current night is still running.
     running = datetime(2026, 11, 8, 2, 30, tzinfo=TZ)
-    assert last_night_mean(load, running, 1, 5) == (date(2026, 11, 7), 400.0)
+    assert last_night_load(load, running, 1, 5) == (date(2026, 11, 7), 400.0)
 
     # Sunday 06:00: the night ending Sunday is complete.
     done = datetime(2026, 11, 8, 6, 0, tzinfo=TZ)
-    assert last_night_mean(load, done, 1, 5) == (date(2026, 11, 8), 800.0)
+    assert last_night_load(load, done, 1, 5) == (date(2026, 11, 8), 800.0)
 
 
-def test_last_night_mean_before_window_on_same_day():
+def test_last_night_load_before_window_on_same_day():
     load = {at(7, h): 400.0 for h in range(1, 5)}
     # Sunday 00:30, window 1-5: the night ending Sunday has not started.
     early = datetime(2026, 11, 8, 0, 30, tzinfo=TZ)
-    assert last_night_mean(load, early, 1, 5) == (date(2026, 11, 7), 400.0)
+    assert last_night_load(load, early, 1, 5) == (date(2026, 11, 7), 400.0)
 
 
-def test_last_night_mean_without_data():
+def test_last_night_load_without_data():
     now = datetime(2026, 11, 8, 12, tzinfo=TZ)
-    assert last_night_mean({}, now, 1, 5) is None
+    assert last_night_load({}, now, 1, 5) is None
+
+
+def test_last_night_load_ignores_single_appliance_run():
+    """Dishwasher at 01:00, otherwise a normal night."""
+    load = {at(9, 1): 840.0, at(9, 2): 476.0, at(9, 3): 429.0, at(9, 4): 421.0}
+    done = datetime(2026, 11, 9, 7, 0, tzinfo=TZ)
+    assert last_night_load(load, done, 1, 5) == (date(2026, 11, 9), 452.5)

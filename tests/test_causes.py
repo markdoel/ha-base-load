@@ -10,7 +10,7 @@ from custom_components.base_load.causes import (
     Cause,
     Explanation,
     describe_pattern,
-    mean_in,
+    median_in,
     rank_causes,
     residual_series,
     window_bounds,
@@ -107,5 +107,5 @@ def test_window_bounds_and_mean():
     assert window_bounds(date(2026, 11, 7), 1, 5, TZ) == (at(1), at(5))
     assert window_bounds(date(2026, 11, 7), 23, 5, TZ) == (at(23, day=6), at(5))
     series = {at(0): 100.0, at(1): 200.0, at(4): 400.0, at(5): 900.0}
-    assert mean_in(series, at(1), at(5)) == 300
-    assert mean_in({}, at(1), at(5)) is None
+    assert median_in(series, at(1), at(5)) == 300
+    assert median_in({}, at(1), at(5)) is None

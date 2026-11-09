@@ -64,7 +64,7 @@ def fake_statistics(
             values = {GRID: grid, BATTERY: battery, WALLBOX: wallbox, HEATER: heater}
             lows = dict(values)
             highs = dict(values)
-            if charging_switches and period == "5minute" and moment >= recent_cutoff:
+            if charging_switches and period == "5minute":
                 values[WALLBOX], lows[WALLBOX], highs[WALLBOX] = 900.0, 0.0, 1850.0
             for sid in statistic_ids:
                 rows[sid].append(

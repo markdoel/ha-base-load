@@ -31,8 +31,9 @@ DEFAULT_HALF_LIFE_DAYS: Final = 14
 # Minimum number of valid night hours per day type before the baseline is trusted.
 MIN_BASELINE_HOURS: Final = 24
 
-# Window for the current reading (mean of 5-minute statistics).
-CURRENT_WINDOW: Final = timedelta(minutes=30)
+# Window for the current reading (median of 5-minute statistics). An hour with
+# a median means an appliance must run more than 30 minutes to move the value.
+CURRENT_WINDOW: Final = timedelta(minutes=60)
 
 UPDATE_INTERVAL: Final = timedelta(minutes=5)
 # The baseline changes slowly, so it is recomputed less often.

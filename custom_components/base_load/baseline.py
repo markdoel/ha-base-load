@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from statistics import fmean
+from statistics import median
 
 from .const import DAY_TYPE_WEEKEND, DAY_TYPE_WORKDAY, DIRECTION_HIGH, DIRECTION_LOW
 
@@ -256,10 +256,14 @@ def build_baseline(
     return baseline
 
 
-def last_night_mean(
+def last_night_load(
     house_load: Series, now: datetime, start: int, end: int
 ) -> tuple[date, float] | None:
-    """Mean load of the most recent fully completed night."""
+    """Median load of the most recent fully completed night.
+
+    The median of the night hours ignores a single appliance run (a dishwasher
+    started at midnight) and only reacts to load that lasts most of the night.
+    """
     nights: dict[date, list[float]] = {}
     for moment, value in house_load.items():
         if in_night_window(moment.hour, start, end):
@@ -273,7 +277,7 @@ def last_night_mean(
     if not candidates:
         return None
     latest = max(candidates)
-    return latest, fmean(nights[latest])
+    return latest, median(nights[latest])
 
 
 def evaluate(

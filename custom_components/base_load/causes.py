@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from statistics import median
 
 from .baseline import MAD_TO_SIGMA, BaselineStats, Series
 
@@ -179,7 +180,7 @@ def window_bounds(night: date, start: int, end: int, tz) -> tuple[datetime, date
     return start_dt, end_dt
 
 
-def mean_in(series: Series, start: datetime, end: datetime) -> float | None:
-    """Mean of all values with start <= moment < end."""
+def median_in(series: Series, start: datetime, end: datetime) -> float | None:
+    """Median of all values with start <= moment < end."""
     values = [value for moment, value in series.items() if start <= moment < end]
-    return sum(values) / len(values) if values else None
+    return median(values) if values else None

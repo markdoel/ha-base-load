@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 import logging
-from statistics import fmean
+from statistics import median
 from typing import Any
 
 from homeassistant.components.recorder import get_instance
@@ -26,13 +26,13 @@ from .baseline import (
     day_type_of,
     evaluate,
     in_night_window,
-    last_night_mean,
+    last_night_load,
     night_date,
 )
 from .causes import (
     Explanation,
     describe_pattern,
-    mean_in,
+    median_in,
     rank_causes,
     residual_series,
     window_bounds,
@@ -306,7 +306,7 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         device_values = {
             sensor: value
             for sensor, series in self._devices.items()
-            if (value := mean_in(series, *window)) is not None
+            if (value := median_in(series, *window)) is not None
         }
         five_minute = await self._fetch(window[0] - ONSET_LOOKBACK, window[1], "5minute")
         explanation = self._explain(
@@ -329,7 +329,7 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         window = window_bounds(night_date(now, start, end), start, end, tz)
 
         # During the night the whole window so far is loaded, which the cause
-        # analysis needs for onset and shape. Otherwise the last 30 minutes do.
+        # analysis needs for onset and shape. Otherwise the last hour does.
         # A 5-minute period is only written after it ended, hence the margin.
         fetch_start = (
             window[0] - ONSET_LOOKBACK if in_night else now - CURRENT_WINDOW - timedelta(minutes=10)
@@ -338,7 +338,7 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         cutoff = now - CURRENT_WINDOW - timedelta(minutes=5)
         recent_load = self._house_load_from(recent)
         window_values = [value for moment, value in recent_load.items() if moment >= cutoff]
-        current = fmean(window_values) if window_values else None
+        current = median(window_values) if window_values else None
 
         # Informational: an excluded load ran in the window. It only blocks the
         # evaluation if it left no usable period (all of them switched).
@@ -372,7 +372,7 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
                     sensor: value
                     for sensor in self.candidate_sensors
                     if sensor in recent
-                    and (value := mean_in(recent[sensor].mean, cutoff, now)) is not None
+                    and (value := median_in(recent[sensor].mean, cutoff, now)) is not None
                 }
                 result.explanation = self._explain(
                     result.evaluation,
@@ -383,7 +383,7 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
                     (window[0], min(window[1], now)),
                 )
 
-        last = last_night_mean(self._house_load, now, start, end)
+        last = last_night_load(self._house_load, now, start, end)
         if last is not None:
             result.last_night_date, result.last_night_load = last
             last_stats = self._baseline.get(day_type_of(result.last_night_date))
