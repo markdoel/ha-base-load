@@ -91,6 +91,29 @@ and the yearly cost. Mobile app notifications get two buttons:
 
 The same is available as services `base_load.mark_normal` and `base_load.label_night`.
 
+## Appliance detection (experimental)
+
+With *Detect appliances* enabled, the integration watches the grid meter live and
+learns switched appliances from their steps, without extra hardware:
+
+1. The live house load (grid + local sources - excluded loads) is split into steady
+   levels. A new level at least *Minimum step* (default 80 W) away from the last one
+   is an edge. Single-sample spikes are ignored.
+2. An "on" edge and a later "off" edge of similar size (within 15 %) form a run.
+3. Runs of similar power (within 12 %) and duration (within a factor of 3) are
+   grouped. After ten runs of an unknown group you get a notification with its power,
+   duration and typical time and can type its name, e.g. `Kettle`.
+4. Named appliances get a power sensor (typical power while running) and an energy
+   sensor (kWh, usable in the energy dashboard).
+
+Batteries that regulate to zero export hide loads from the meter within seconds.
+Add the battery output as a local source, its live value is added back.
+
+Works well for clearly switched loads above roughly 80 W with a meter that reports
+every few seconds (Tibber Pulse, Shelly 3EM, ...). Small, modulating or overlapping
+loads of the same size are not separated. Services: `base_load.name_appliance`,
+`base_load.forget_appliance`; IDs are in the attribute of *Detected appliances*.
+
 ## Presence and holidays
 
 Select a presence entity to skip nights in which nobody was home:
@@ -143,6 +166,8 @@ long-term statistics. Entities without statistics use their current value.
 | `sensor.<name>_deviation_cost_per_year` | Only with a price entity |
 | `sensor.<name>_unmeasured_base_load` | Base load not explained by selected devices, attribute `devices` with power, share and cost |
 | `sensor.<name>_new_base_load_level` | Lasting level shifts, attribute `shifts` |
+| `sensor.<name>_detected_appliances` | Only with appliance detection: number of named appliances, attribute `appliances` |
+| `sensor.<name>_<appliance>_power`, `sensor.<name>_<appliance>_energy` | One pair per named appliance |
 | `sensor.<name>_data_quality` | Diagnostic, share of valid night hours |
 | `binary_sensor.<name>_data_incomplete` | Diagnostic, attribute `reasons` |
 

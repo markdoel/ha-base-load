@@ -86,3 +86,14 @@ ACTION_NORMAL: Final = "BASE_LOAD_NORMAL"
 ACTION_LABEL: Final = "BASE_LOAD_LABEL"
 SERVICE_MARK_NORMAL: Final = "mark_normal"
 SERVICE_LABEL_NIGHT: Final = "label_night"
+
+CONF_DETECT_APPLIANCES: Final = "detect_appliances"
+CONF_MIN_STEP: Final = "min_step"
+DEFAULT_MIN_STEP: Final = 80
+# Runs of an unnamed cluster before the user is asked what it is.
+ASK_AFTER_RUNS: Final = 10
+ACTION_NAME_APPLIANCE: Final = "BASE_LOAD_APPLIANCE"
+SERVICE_NAME_APPLIANCE: Final = "name_appliance"
+SERVICE_FORGET_APPLIANCE: Final = "forget_appliance"
+SIGNAL_APPLIANCES_UPDATED: Final = "base_load_appliances_updated_{}"
+SIGNAL_APPLIANCE_NAMED: Final = "base_load_appliance_named_{}"

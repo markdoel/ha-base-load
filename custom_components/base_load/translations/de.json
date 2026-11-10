@@ -20,7 +20,9 @@
           "presence_entity": "Anwesenheit",
           "price_entity": "Strompreis",
           "notify_service": "Benachrichtigungsdienst",
-          "notify_time": "Uhrzeit der Benachrichtigung"
+          "notify_time": "Uhrzeit der Benachrichtigung",
+          "detect_appliances": "Geräte erkennen",
+          "min_step": "Mindestsprung"
         },
         "data_description": {
           "grid_sensor": "Netzbezug in W. Negative Werte bedeuten Einspeisung.",
@@ -33,7 +35,9 @@
           "half_life_days": "So alte Nächte zählen nur noch halb. Kleinere Werte folgen dauerhaften Änderungen (Heizsaison) schneller. 0 gewichtet alle Nächte gleich.",
           "presence_entity": "Nächte, in denen niemand zu Hause war, werden übersprungen und nicht in die Baseline übernommen. zone.home (abwesend bei 0 Personen), eine Person oder Gruppe (abwesend, wenn nicht zu Hause) oder ein Urlaubsschalter (an bedeutet abwesend).",
           "price_entity": "Sensor oder Zahl mit dem Preis pro kWh, z. B. EUR/kWh oder ct/kWh. Dynamische Preise werden aus der Statistik über 30 Tage gemittelt.",
-          "notify_service": "z. B. notify.mobile_app_pixel. Schickt morgens eine Nachricht nach auffälligen Nächten und bei neuen Grundlast-Niveaus, mit Knöpfen zum Bestätigen oder Benennen der Ursache. Leer lassen zum Abschalten."
+          "notify_service": "z. B. notify.mobile_app_pixel. Schickt morgens eine Nachricht nach auffälligen Nächten und bei neuen Grundlast-Niveaus, mit Knöpfen zum Bestätigen oder Benennen der Ursache. Leer lassen zum Abschalten.",
+          "detect_appliances": "Beobachtet den Zähler live und lernt schaltende Geräte an ihren Ein- und Ausschaltsprüngen. Fragt über den Benachrichtigungsdienst, was ein Gerät ist.",
+          "min_step": "Kleinere Änderungen werden ignoriert. 80 W passen für die meisten Zähler mit etwa 3 s Auflösung."
         }
       }
     },
@@ -65,14 +69,18 @@
           "presence_entity": "Anwesenheit",
           "price_entity": "Strompreis",
           "notify_service": "Benachrichtigungsdienst",
-          "notify_time": "Uhrzeit der Benachrichtigung"
+          "notify_time": "Uhrzeit der Benachrichtigung",
+          "detect_appliances": "Geräte erkennen",
+          "min_step": "Mindestsprung"
         },
         "data_description": {
           "candidate_sensors": "Gemessene Geräte (Steckdosen, Zwischenzähler), die bei einer Abweichung geprüft werden. Keinen Gruppensensor zusammen mit seinen Mitgliedern wählen.",
           "half_life_days": "So alte Nächte zählen nur noch halb. Kleinere Werte folgen dauerhaften Änderungen (Heizsaison) schneller. 0 gewichtet alle Nächte gleich.",
           "presence_entity": "Nächte, in denen niemand zu Hause war, werden übersprungen und nicht in die Baseline übernommen. zone.home (abwesend bei 0 Personen), eine Person oder Gruppe (abwesend, wenn nicht zu Hause) oder ein Urlaubsschalter (an bedeutet abwesend).",
           "price_entity": "Sensor oder Zahl mit dem Preis pro kWh, z. B. EUR/kWh oder ct/kWh. Dynamische Preise werden aus der Statistik über 30 Tage gemittelt.",
-          "notify_service": "z. B. notify.mobile_app_pixel. Schickt morgens eine Nachricht nach auffälligen Nächten und bei neuen Grundlast-Niveaus, mit Knöpfen zum Bestätigen oder Benennen der Ursache. Leer lassen zum Abschalten."
+          "notify_service": "z. B. notify.mobile_app_pixel. Schickt morgens eine Nachricht nach auffälligen Nächten und bei neuen Grundlast-Niveaus, mit Knöpfen zum Bestätigen oder Benennen der Ursache. Leer lassen zum Abschalten.",
+          "detect_appliances": "Beobachtet den Zähler live und lernt schaltende Geräte an ihren Ein- und Ausschaltsprüngen. Fragt über den Benachrichtigungsdienst, was ein Gerät ist.",
+          "min_step": "Kleinere Änderungen werden ignoriert. 80 W passen für die meisten Zähler mit etwa 3 s Auflösung."
         }
       }
     },
@@ -301,6 +309,43 @@
             "name": "Niveauwechsel"
           }
         }
+      },
+      "detected_appliances": {
+        "name": "Erkannte Geräte",
+        "state_attributes": {
+          "house_load": {
+            "name": "Hauslast"
+          },
+          "runs": {
+            "name": "Läufe"
+          },
+          "appliances": {
+            "name": "Geräte"
+          }
+        }
+      },
+      "appliance_power": {
+        "name": "{appliance} Leistung",
+        "state_attributes": {
+          "typical_power": {
+            "name": "Typische Leistung"
+          },
+          "typical_duration_s": {
+            "name": "Typische Dauer"
+          },
+          "runs": {
+            "name": "Läufe"
+          },
+          "last_seen": {
+            "name": "Zuletzt gesehen"
+          },
+          "appliance_id": {
+            "name": "Geräte-ID"
+          }
+        }
+      },
+      "appliance_energy": {
+        "name": "{appliance} Energie"
       }
     },
     "binary_sensor": {
@@ -430,6 +475,38 @@
           "description": "Morgen nach der Nacht. Nur die letzte Nacht kann benannt werden."
         }
       }
+    },
+    "name_appliance": {
+      "name": "Erkanntes Gerät benennen",
+      "description": "Gibt einem erkannten Gerät einen Namen und legt seine Leistungs- und Energiesensoren an.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eintrag",
+          "description": "Base-Load-Monitor-Eintrag. Leer lassen für alle."
+        },
+        "appliance_id": {
+          "name": "Geräte-ID",
+          "description": "ID aus dem Attribut von Erkannte Geräte."
+        },
+        "name": {
+          "name": "Name",
+          "description": "z. B. Wasserkocher."
+        }
+      }
+    },
+    "forget_appliance": {
+      "name": "Erkanntes Gerät vergessen",
+      "description": "Entfernt ein erkanntes Gerät und seine Sensoren.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eintrag",
+          "description": "Base-Load-Monitor-Eintrag. Leer lassen für alle."
+        },
+        "appliance_id": {
+          "name": "Geräte-ID",
+          "description": "ID aus dem Attribut von Erkannte Geräte."
+        }
+      }
     }
   },
   "exceptions": {
@@ -438,6 +515,12 @@
     },
     "nothing_to_label": {
       "message": "Die Nacht hat kein ungeklärtes Muster, das benannt werden könnte."
+    },
+    "detection_disabled": {
+      "message": "Die Geräteerkennung ist nicht aktiviert."
+    },
+    "appliance_not_found": {
+      "message": "Kein erkanntes Gerät mit dieser ID."
     }
   }
 }

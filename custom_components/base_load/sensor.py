@@ -12,18 +12,25 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfPower
-from homeassistant.core import HomeAssistant
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfEnergy, UnitOfPower
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .causes import Explanation
-from .const import DAY_TYPE_WEEKEND, DAY_TYPE_WORKDAY
+from .const import (
+    DAY_TYPE_WEEKEND,
+    DAY_TYPE_WORKDAY,
+    SIGNAL_APPLIANCE_NAMED,
+    SIGNAL_APPLIANCES_UPDATED,
+)
 from .coordinator import BaseLoadConfigEntry, BaseLoadData
 from .cost import annual_cost
 from .entity import BaseLoadEntity
 from .morning import entity_name
+from .nilm import describe_duration
 
 
 def _round(value: float | None, digits: int = 0) -> float | None:
@@ -143,6 +150,19 @@ async def async_setup_entry(
         BaseLoadCauseSensor(coordinator, "last_night_cause", last_night=True),
     ]
     entities += [BaseLoadUnmeasuredSensor(coordinator), BaseLoadShiftSensor(coordinator)]
+    detector = coordinator.appliances
+    if detector is not None:
+        entities.append(DetectedAppliancesSensor(coordinator))
+        for cluster in detector.catalog.named():
+            entities += _appliance_entities(coordinator, cluster.id)
+
+        @callback
+        def _named(cluster_id: str) -> None:
+            async_add_entities(_appliance_entities(coordinator, cluster_id))
+
+        entry.async_on_unload(
+            async_dispatcher_connect(hass, SIGNAL_APPLIANCE_NAMED.format(entry.entry_id), _named)
+        )
     if coordinator.price_entity:
         entities += [
             BaseLoadCostSensor(coordinator, "annual_cost", deviation=False),
@@ -432,3 +452,133 @@ class BaseLoadShiftSensor(BaseLoadEntity, SensorEntity):
                 for s in data.shifts
             ]
         }
+
+
+def _appliance_entities(coordinator, cluster_id: str) -> list[SensorEntity]:
+    return [
+        AppliancePowerSensor(coordinator, cluster_id),
+        ApplianceEnergySensor(coordinator, cluster_id),
+    ]
+
+
+class _ApplianceListener(BaseLoadEntity, SensorEntity):
+    """Updates whenever the appliance detector changes."""
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_APPLIANCES_UPDATED.format(self.coordinator.config_entry.entry_id),
+                self.async_write_ha_state,
+            )
+        )
+
+    @property
+    def detector(self):
+        return self.coordinator.appliances
+
+
+class DetectedAppliancesSensor(_ApplianceListener):
+    """Number of named appliances, with every detected cluster as attribute."""
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "detected_appliances")
+
+    @property
+    def native_value(self) -> int:
+        return len(self.detector.catalog.named())
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any]:
+        language = (self.hass.config.language or "en").split("-")[0]
+        clusters = sorted(self.detector.catalog.clusters, key=lambda c: c.energy_wh, reverse=True)
+        return {
+            "house_load": (
+                None if self.detector.house_load is None else round(self.detector.house_load)
+            ),
+            "runs": self.detector.runs_total,
+            "appliances": [
+                {
+                    "id": c.id,
+                    "name": c.name,
+                    "power": round(c.power),
+                    "duration": describe_duration(c.duration_s, language),
+                    "runs": c.count,
+                    "energy_kwh": round(c.energy_wh / 1000, 2),
+                    "typical_hour": c.typical_hour,
+                    "running": c.id in self.detector.running,
+                }
+                for c in clusters[:25]
+            ],
+        }
+
+
+class _NamedAppliance(_ApplianceListener):
+    """Base for the sensors of one named appliance."""
+
+    def __init__(self, coordinator, cluster_id: str, kind: str) -> None:
+        super().__init__(coordinator, f"appliance_{kind}")
+        self._cluster_id = cluster_id
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_appliance_{cluster_id}_{kind}"
+
+    @property
+    def cluster(self):
+        return self.detector.catalog.get(self._cluster_id) if self.detector else None
+
+    @property
+    def available(self) -> bool:
+        return self.cluster is not None
+
+    @property
+    def translation_placeholders(self) -> Mapping[str, str]:
+        cluster = self.cluster
+        return {"appliance": cluster.name if cluster and cluster.name else self._cluster_id}
+
+
+class AppliancePowerSensor(_NamedAppliance):
+    """Current power of a named appliance: its typical power while running."""
+
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, coordinator, cluster_id: str) -> None:
+        super().__init__(coordinator, cluster_id, "power")
+
+    @property
+    def native_value(self) -> float | None:
+        if self.cluster is None:
+            return None
+        return round(self.detector.power_of(self._cluster_id))
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any]:
+        cluster = self.cluster
+        if cluster is None:
+            return {}
+        return {
+            "typical_power": round(cluster.power),
+            "typical_duration_s": round(cluster.duration_s),
+            "runs": cluster.count,
+            "last_seen": cluster.last_seen,
+            "appliance_id": cluster.id,
+        }
+
+
+class ApplianceEnergySensor(_NamedAppliance):
+    """Energy of all detected runs of a named appliance."""
+
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator, cluster_id: str) -> None:
+        super().__init__(coordinator, cluster_id, "energy")
+
+    @property
+    def native_value(self) -> float | None:
+        cluster = self.cluster
+        return None if cluster is None else round(cluster.energy_wh / 1000, 3)

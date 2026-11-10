@@ -64,6 +64,17 @@ sections:
   - type: grid
     cards:
       - type: heading
+        heading: Detected appliances
+      - type: markdown
+        content: >-
+          | Appliance | W | Duration | Runs | kWh |
+          |---|--:|--:|--:|--:|
+          {% for a in state_attr('sensor.base_load_detected_appliances', 'appliances') or [] %}
+          | {{ a.name or ('? ' ~ a.id) }}{{ ' ⚡' if a.running }} | {{ a.power }} | {{ a.duration }} | {{ a.runs }} | {{ a.energy_kwh }} |
+          {% endfor %}
+  - type: grid
+    cards:
+      - type: heading
         heading: Cost and data
       - type: tile
         entity: sensor.base_load_base_load_cost_per_year

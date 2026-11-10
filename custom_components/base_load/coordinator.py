@@ -206,6 +206,8 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         self._event_shifts: set[str] = set()
         self._notified_shifts: set[str] = set()
         self._shifts: list[LevelShift] = []
+        # Live appliance detection, set up by __init__ when enabled.
+        self.appliances: Any = None
         # The explanation of a finished night does not change, so it is cached.
         self._last_night_cache: tuple[date, Explanation | None] | None = None
 

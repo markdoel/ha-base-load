@@ -33,6 +33,15 @@
       },
       "level_shift": {
         "default": "mdi:stairs-up"
+      },
+      "detected_appliances": {
+        "default": "mdi:radar"
+      },
+      "appliance_power": {
+        "default": "mdi:power-plug"
+      },
+      "appliance_energy": {
+        "default": "mdi:lightning-bolt"
       }
     },
     "binary_sensor": {
@@ -62,6 +71,12 @@
     },
     "label_night": {
       "service": "mdi:tag-outline"
+    },
+    "name_appliance": {
+      "service": "mdi:tag-text-outline"
+    },
+    "forget_appliance": {
+      "service": "mdi:delete-outline"
     }
   }
 }

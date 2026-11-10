@@ -18,16 +18,20 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
+from .appliances import ApplianceDetector
 from .const import (
     CONF_CANDIDATE_SENSORS,
+    CONF_DETECT_APPLIANCES,
     CONF_EXCLUDED_SENSORS,
     CONF_FEED_IN_SENSORS,
     CONF_GRID_SENSOR,
     CONF_PRESENCE_ENTITY,
     CONF_PRICE_ENTITY,
     DOMAIN,
+    SERVICE_FORGET_APPLIANCE,
     SERVICE_LABEL_NIGHT,
     SERVICE_MARK_NORMAL,
+    SERVICE_NAME_APPLIANCE,
     STORAGE_VERSION,
 )
 from .coordinator import BaseLoadConfigEntry, BaseLoadCoordinator
@@ -37,6 +41,12 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 _ENTRY = "config_entry_id"
 _MARK_SCHEMA = vol.Schema({vol.Optional(_ENTRY): cv.string, vol.Optional("date"): cv.date})
+_FORGET_APPLIANCE_SCHEMA = vol.Schema(
+    {vol.Optional(_ENTRY): cv.string, vol.Required("appliance_id"): cv.string}
+)
+_NAME_APPLIANCE_SCHEMA = _FORGET_APPLIANCE_SCHEMA.extend(
+    {vol.Required("name"): vol.All(cv.string, vol.Length(min=1))}
+)
 _LABEL_SCHEMA = _MARK_SCHEMA.extend({vol.Required("label"): vol.All(cv.string, vol.Length(min=1))})
 
 
@@ -74,6 +84,32 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                     translation_domain=DOMAIN, translation_key="nothing_to_label"
                 )
 
+    def _detectors(call: ServiceCall) -> list[ApplianceDetector]:
+        detectors = [c.appliances for c in _coordinators(hass, call) if c.appliances]
+        if not detectors:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="detection_disabled"
+            )
+        return detectors
+
+    async def _name_appliance(call: ServiceCall) -> None:
+        if not any(d.name(call.data["appliance_id"], call.data["name"]) for d in _detectors(call)):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="appliance_not_found"
+            )
+
+    async def _forget_appliance(call: ServiceCall) -> None:
+        if not any(d.forget(call.data["appliance_id"]) for d in _detectors(call)):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="appliance_not_found"
+            )
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_NAME_APPLIANCE, _name_appliance, _NAME_APPLIANCE_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_FORGET_APPLIANCE, _forget_appliance, _FORGET_APPLIANCE_SCHEMA
+    )
     hass.services.async_register(DOMAIN, SERVICE_MARK_NORMAL, _mark_normal, _MARK_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_LABEL_NIGHT, _label_night, _LABEL_SCHEMA)
     return True
@@ -126,6 +162,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: BaseLoadConfigEntry) -> 
             hass, coordinator.configured_entities, _registry_updated
         )
     )
+
+    if coordinator.opt(CONF_DETECT_APPLIANCES, False):
+        detector = ApplianceDetector(hass, entry, coordinator)
+        await detector.async_start()
+        coordinator.appliances = detector
+        entry.async_on_unload(detector.async_stop)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     async_setup_notifications(hass, entry)

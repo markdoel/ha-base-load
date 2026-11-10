@@ -13,6 +13,7 @@ import voluptuous as vol
 
 from .const import (
     CONF_CANDIDATE_SENSORS,
+    CONF_DETECT_APPLIANCES,
     CONF_EXCLUDED_SENSORS,
     CONF_EXCLUDED_THRESHOLD,
     CONF_FEED_IN_SENSORS,
@@ -20,6 +21,7 @@ from .const import (
     CONF_HALF_LIFE_DAYS,
     CONF_LOOKBACK_WEEKS,
     CONF_MIN_DEVIATION,
+    CONF_MIN_STEP,
     CONF_NIGHT_END,
     CONF_NIGHT_START,
     CONF_NOTIFY_SERVICE,
@@ -31,6 +33,7 @@ from .const import (
     DEFAULT_HALF_LIFE_DAYS,
     DEFAULT_LOOKBACK_WEEKS,
     DEFAULT_MIN_DEVIATION,
+    DEFAULT_MIN_STEP,
     DEFAULT_NAME,
     DEFAULT_NIGHT_END,
     DEFAULT_NIGHT_START,
@@ -157,6 +160,12 @@ def _notify_schema(defaults: dict[str, Any]) -> dict[vol.Marker, Any]:
         vol.Required(
             CONF_NOTIFY_TIME, default=defaults.get(CONF_NOTIFY_TIME, DEFAULT_NOTIFY_TIME)
         ): selector.TimeSelector(),
+        vol.Required(
+            CONF_DETECT_APPLIANCES, default=defaults.get(CONF_DETECT_APPLIANCES, False)
+        ): selector.BooleanSelector(),
+        vol.Required(CONF_MIN_STEP, default=defaults.get(CONF_MIN_STEP, DEFAULT_MIN_STEP)): _watts(
+            1000
+        ),
     }
 
 

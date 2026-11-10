@@ -20,7 +20,9 @@
           "presence_entity": "Presence",
           "price_entity": "Electricity price",
           "notify_service": "Notification service",
-          "notify_time": "Notification time"
+          "notify_time": "Notification time",
+          "detect_appliances": "Detect appliances",
+          "min_step": "Minimum step"
         },
         "data_description": {
           "grid_sensor": "Power from the grid in W. Negative values mean export.",
@@ -33,7 +35,9 @@
           "half_life_days": "Nights this many days old count half. Lower values follow lasting changes (heating season) faster. 0 weighs all nights equally.",
           "presence_entity": "Nights in which nobody was home are skipped and left out of the baseline. zone.home (away at 0 persons), a person or group (away unless home), or a holiday switch (on means away).",
           "price_entity": "Sensor or number with the price per kWh, e.g. EUR/kWh or ct/kWh. Dynamic prices are averaged over 30 days from statistics.",
-          "notify_service": "e.g. notify.mobile_app_pixel. Sends a morning message after unusual nights and on new base load levels, with buttons to confirm or name the cause. Leave empty to disable."
+          "notify_service": "e.g. notify.mobile_app_pixel. Sends a morning message after unusual nights and on new base load levels, with buttons to confirm or name the cause. Leave empty to disable.",
+          "detect_appliances": "Watches the meter live and learns switched appliances from their on and off steps. Asks via the notification service what an appliance is.",
+          "min_step": "Smaller changes are ignored. 80 W suits most meters with about 3 s resolution."
         }
       }
     },
@@ -65,14 +69,18 @@
           "presence_entity": "Presence",
           "price_entity": "Electricity price",
           "notify_service": "Notification service",
-          "notify_time": "Notification time"
+          "notify_time": "Notification time",
+          "detect_appliances": "Detect appliances",
+          "min_step": "Minimum step"
         },
         "data_description": {
           "candidate_sensors": "Measured devices (plugs, sub-meters) that are checked when the base load deviates. Do not combine a group sensor with its members.",
           "half_life_days": "Nights this many days old count half. Lower values follow lasting changes (heating season) faster. 0 weighs all nights equally.",
           "presence_entity": "Nights in which nobody was home are skipped and left out of the baseline. zone.home (away at 0 persons), a person or group (away unless home), or a holiday switch (on means away).",
           "price_entity": "Sensor or number with the price per kWh, e.g. EUR/kWh or ct/kWh. Dynamic prices are averaged over 30 days from statistics.",
-          "notify_service": "e.g. notify.mobile_app_pixel. Sends a morning message after unusual nights and on new base load levels, with buttons to confirm or name the cause. Leave empty to disable."
+          "notify_service": "e.g. notify.mobile_app_pixel. Sends a morning message after unusual nights and on new base load levels, with buttons to confirm or name the cause. Leave empty to disable.",
+          "detect_appliances": "Watches the meter live and learns switched appliances from their on and off steps. Asks via the notification service what an appliance is.",
+          "min_step": "Smaller changes are ignored. 80 W suits most meters with about 3 s resolution."
         }
       }
     },
@@ -301,6 +309,43 @@
             "name": "Shifts"
           }
         }
+      },
+      "detected_appliances": {
+        "name": "Detected appliances",
+        "state_attributes": {
+          "house_load": {
+            "name": "House load"
+          },
+          "runs": {
+            "name": "Runs"
+          },
+          "appliances": {
+            "name": "Appliances"
+          }
+        }
+      },
+      "appliance_power": {
+        "name": "{appliance} power",
+        "state_attributes": {
+          "typical_power": {
+            "name": "Typical power"
+          },
+          "typical_duration_s": {
+            "name": "Typical duration"
+          },
+          "runs": {
+            "name": "Runs"
+          },
+          "last_seen": {
+            "name": "Last seen"
+          },
+          "appliance_id": {
+            "name": "Appliance ID"
+          }
+        }
+      },
+      "appliance_energy": {
+        "name": "{appliance} energy"
       }
     },
     "binary_sensor": {
@@ -430,6 +475,38 @@
           "description": "Morning of the night. Only the last night can be named."
         }
       }
+    },
+    "name_appliance": {
+      "name": "Name a detected appliance",
+      "description": "Gives a detected appliance a name and creates its power and energy sensors.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Entry",
+          "description": "Base Load Monitor entry. Leave empty for all."
+        },
+        "appliance_id": {
+          "name": "Appliance ID",
+          "description": "ID from the attribute of Detected appliances."
+        },
+        "name": {
+          "name": "Name",
+          "description": "e.g. kettle."
+        }
+      }
+    },
+    "forget_appliance": {
+      "name": "Forget a detected appliance",
+      "description": "Removes a detected appliance and its sensors.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Entry",
+          "description": "Base Load Monitor entry. Leave empty for all."
+        },
+        "appliance_id": {
+          "name": "Appliance ID",
+          "description": "ID from the attribute of Detected appliances."
+        }
+      }
     }
   },
   "exceptions": {
@@ -438,6 +515,12 @@
     },
     "nothing_to_label": {
       "message": "The night has no unexplained pattern that could be named."
+    },
+    "detection_disabled": {
+      "message": "Appliance detection is not enabled."
+    },
+    "appliance_not_found": {
+      "message": "No detected appliance with this ID."
     }
   }
 }

@@ -501,3 +501,101 @@ async def test_morning_notification(hass: HomeAssistant, night) -> None:
     hass.bus.async_fire("mobile_app_notification_action", {"action": actions[0]})
     await hass.async_block_till_done()
     assert entry.runtime_data.data.last_night_marked_normal
+
+
+async def _feed(hass, freezer, entity_id, values, step=3):
+    for value in values:
+        freezer.tick(timedelta(seconds=step))
+        hass.states.async_set(entity_id, str(value), {"unit_of_measurement": "W"})
+        await hass.async_block_till_done()
+
+
+async def test_appliance_detection_end_to_end(hass: HomeAssistant, night, freezer) -> None:
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    calls = async_mock_service(hass, "notify", "mobile_app_test")
+    hass.states.async_set(BATTERY, "0", {"unit_of_measurement": "W"})
+    data = {
+        **ENTRY_DATA,
+        "detect_appliances": True,
+        "notify_service": "notify.mobile_app_test",
+    }
+    entry = await _setup(hass, current_grid=262.0, data=data)
+    detector = entry.runtime_data.appliances
+    assert detector is not None
+
+    # Ten kettle runs: 2 kW for about 30 s.
+    for _ in range(10):
+        await _feed(hass, freezer, GRID, [400, 405, 398, 402])
+        await _feed(
+            hass, freezer, GRID, [2400, 2410, 2395, 2402, 2398, 2405, 2401, 2399, 2404, 2400]
+        )
+        await _feed(hass, freezer, GRID, [401, 399, 403])
+        hass.states.async_set(BATTERY, "0", {"unit_of_measurement": "W"})
+
+    assert detector.runs_total == 10
+    cluster = detector.catalog.clusters[0]
+    assert cluster.count == 10 and 1950 < cluster.power < 2050
+    detected = hass.states.get("sensor.base_load_detected_appliances")
+    assert detected.attributes["appliances"][0]["runs"] == 10
+
+    # The user is asked once and answers via the notification.
+    assert len(calls) == 1
+    action = calls[0].data["data"]["actions"][0]["action"]
+    hass.bus.async_fire(
+        "mobile_app_notification_action", {"action": action, "reply_text": "Kettle"}
+    )
+    await hass.async_block_till_done()
+    assert cluster.name == "Kettle"
+    power = hass.states.get("sensor.base_load_kettle_power")
+    energy = hass.states.get("sensor.base_load_kettle_energy")
+    assert power is not None and energy is not None
+    before = float(energy.state)
+
+    # A further run shows up live in the power sensor and adds energy.
+    await _feed(hass, freezer, GRID, [400, 402, 2400, 2402, 2398])
+    assert float(hass.states.get("sensor.base_load_kettle_power").state) > 1900
+    await _feed(hass, freezer, GRID, [2401] * 8 + [400, 401, 399])
+    assert float(hass.states.get("sensor.base_load_kettle_power").state) == 0
+    assert float(hass.states.get("sensor.base_load_kettle_energy").state) > before
+
+
+async def test_battery_compensation_keeps_one_edge(hass: HomeAssistant, night, freezer) -> None:
+    hass.states.async_set(BATTERY, "0", {"unit_of_measurement": "W"})
+    data = {**ENTRY_DATA, "detect_appliances": True}
+    entry = await _setup(hass, current_grid=262.0, data=data)
+    detector = entry.runtime_data.appliances
+
+    await _feed(hass, freezer, GRID, [400, 401, 399, 400])
+    # A 300 W load switches on; the battery ramps up and the grid falls back.
+    await _feed(hass, freezer, GRID, [700, 701])
+    for battery, grid in [(150, 551), (300, 400), (300, 401), (300, 399)]:
+        freezer.tick(timedelta(seconds=1))
+        hass.states.async_set(BATTERY, str(battery), {"unit_of_measurement": "W"})
+        await _feed(hass, freezer, GRID, [grid], step=2)
+    await hass.async_block_till_done()
+
+    assert len(detector.pairer.open) == 1
+    assert 280 < detector.pairer.open[0][1] < 320
+    assert 690 < detector.house_load < 710
+
+
+async def test_name_and_forget_services(hass: HomeAssistant, night, freezer) -> None:
+    data = {**ENTRY_DATA, "detect_appliances": True}
+    entry = await _setup(hass, current_grid=262.0, data=data)
+    detector = entry.runtime_data.appliances
+    await _feed(hass, freezer, GRID, [400, 401, 2400, 2401, 2399, 400, 401])
+    cluster_id = detector.catalog.clusters[0].id
+
+    await hass.services.async_call(
+        "base_load", "name_appliance", {"appliance_id": cluster_id, "name": "Oven"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.base_load_oven_energy") is not None
+
+    await hass.services.async_call(
+        "base_load", "forget_appliance", {"appliance_id": cluster_id}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert detector.catalog.clusters == []
+    assert hass.states.get("sensor.base_load_oven_energy") is None

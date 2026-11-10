@@ -26,3 +26,34 @@ label_night:
       required: false
       selector:
         date:
+
+name_appliance:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: base_load
+    appliance_id:
+      required: true
+      example: 3fa2c1d0
+      selector:
+        text:
+    name:
+      required: true
+      example: Kettle
+      selector:
+        text:
+
+forget_appliance:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: base_load
+    appliance_id:
+      required: true
+      example: 3fa2c1d0
+      selector:
+        text:
