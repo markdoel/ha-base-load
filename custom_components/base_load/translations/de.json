@@ -26,7 +26,7 @@
         },
         "data_description": {
           "grid_sensor": "Netzbezug in W. Negative Werte bedeuten Einspeisung.",
-          "feed_in_sensors": "Leistung, die PV-Wechselrichter oder Batterien ins Haus einspeisen. Wird zur Netzleistung addiert.",
+          "feed_in_sensors": "Leistung, die PV-Wechselrichter oder Batterien ins Haus einspeisen, in W oder kW. Wird zur Netzleistung addiert. Sensoren ohne Langzeitstatistik helfen trotzdem der Live-Geräteerkennung.",
           "excluded_sensors": "Stunden, in denen einer dieser Verbraucher über der Schwelle liegt, werden ignoriert.",
           "night_start": "Volle Stunde, Ortszeit. Das Fenster darf über Mitternacht gehen.",
           "sensitivity": "Kleinere Werte melden mehr Abweichungen. 3 ist ein guter Start.",

@@ -26,7 +26,7 @@
         },
         "data_description": {
           "grid_sensor": "Power from the grid in W. Negative values mean export.",
-          "feed_in_sensors": "Power fed into the house by PV inverters or batteries. Added to the grid power.",
+          "feed_in_sensors": "Power fed into the house by PV inverters or batteries, in W or kW. Added to the grid power. Sensors without long-term statistics still help the live appliance detection.",
           "excluded_sensors": "Hours in which one of these loads exceeds the threshold are ignored.",
           "night_start": "Full hour, local time. The window may wrap past midnight.",
           "sensitivity": "Lower values report more deviations. 3 is a good start.",

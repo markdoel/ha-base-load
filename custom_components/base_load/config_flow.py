@@ -72,9 +72,9 @@ def _sources_schema(defaults: dict[str, Any]) -> dict[vol.Marker, Any]:
         vol.Optional(
             CONF_FEED_IN_SENSORS, default=defaults.get(CONF_FEED_IN_SENSORS, [])
         ): selector.EntitySelector(
-            selector.EntitySelectorConfig(
-                domain="sensor", device_class=SensorDeviceClass.POWER, multiple=True
-            )
+            # No device class filter: inverters (AhoyDTU, OpenDTU) often report
+            # power without one. Units W and kW are handled.
+            selector.EntitySelectorConfig(domain="sensor", multiple=True)
         ),
         vol.Optional(
             CONF_EXCLUDED_SENSORS, default=defaults.get(CONF_EXCLUDED_SENSORS, [])
