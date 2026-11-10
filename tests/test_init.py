@@ -36,6 +36,8 @@ def fake_statistics(
     charging_now: bool = False,
     heater_now: float = 20.0,
     charging_switches: bool = False,
+    heater_since: datetime | None = None,
+    extra_since: datetime | None = None,
 ):
     """Build a statistics_during_period replacement.
 
@@ -57,6 +59,17 @@ def fake_statistics(
             battery = 50.0 if night else 0.0
             wallbox = 1850.0 if charging else 0.0
             heater = 20.0
+            if heater_since is not None and local >= heater_since:
+                # Heating season: the heater runs at 90 W from then on.
+                heater = 90.0
+                grid += 70.0
+            # An unmeasured load of about 300 W, 01:00 to 02:30.
+            if (
+                extra_since is not None
+                and local >= extra_since
+                and (local.hour == 1 or (local.hour == 2 and local.minute < 30))
+            ):
+                grid += 300.0
             if period == "5minute" and moment >= recent_cutoff:
                 grid, battery = current_grid, 50.0
                 wallbox = 1850.0 if charging_now else 0.0
@@ -91,6 +104,7 @@ async def _setup(
     charging_switches: bool = False,
     data: dict | None = None,
     presence_history: list | None = None,
+    **fake_kwargs,
 ):
     entry = MockConfigEntry(
         domain=DOMAIN, title="Base Load", data=data or ENTRY_DATA, unique_id=GRID
@@ -99,7 +113,9 @@ async def _setup(
     with (
         patch(
             "custom_components.base_load.coordinator.statistics_during_period",
-            side_effect=fake_statistics(current_grid, charging_now, heater_now, charging_switches),
+            side_effect=fake_statistics(
+                current_grid, charging_now, heater_now, charging_switches, **fake_kwargs
+            ),
         ),
         patch(
             "custom_components.base_load.coordinator.history.get_significant_states",
@@ -368,3 +384,120 @@ async def test_renamed_sensor_is_followed(hass: HomeAssistant, night) -> None:
         await hass.async_block_till_done()
 
     assert entry.options["candidate_sensors"] == ["sensor.heater_renamed"]
+
+
+async def test_unmeasured_breakdown(hass: HomeAssistant, night) -> None:
+    hass.states.async_set(HEATER, "20", {"friendly_name": "Heater"})
+    await _setup(hass, current_grid=262.0)
+
+    unmeasured = hass.states.get("sensor.base_load_unmeasured_base_load")
+    # House about 308 W, heater 20 W measured.
+    assert 270 < float(unmeasured.state) < 300
+    assert unmeasured.attributes["devices"][0]["name"] == "Heater"
+    assert unmeasured.attributes["devices"][0]["power"] == 20
+
+
+async def test_level_shift_detected(hass: HomeAssistant, night) -> None:
+    events = []
+    hass.bus.async_listen("base_load_level_shift", events.append)
+    hass.states.async_set(HEATER, "90", {"friendly_name": "Heater"})
+    since = datetime(2026, 10, 30, 12, tzinfo=BERLIN)
+    await _setup(hass, current_grid=332.0, heater_now=90.0, heater_since=since)
+
+    shift = hass.states.get("sensor.base_load_new_base_load_level")
+    entries = {item["entity_id"]: item for item in shift.attributes["shifts"]}
+    assert entries[HEATER]["delta"] == 70
+    assert str(entries[HEATER]["since"]) == "2026-10-31"
+    assert any(event.data["entity_id"] == HEATER for event in events)
+
+
+async def test_no_level_shift_on_stable_data(hass: HomeAssistant, night) -> None:
+    await _setup(hass, current_grid=262.0)
+    shift = hass.states.get("sensor.base_load_new_base_load_level")
+    assert shift.attributes["shifts"] == []
+    assert shift.state == "Nothing unusual"
+
+
+async def _labelled_setup(hass: HomeAssistant):
+    data = {**ENTRY_DATA, "min_deviation": 30}
+    return await _setup(
+        hass,
+        current_grid=262.0,
+        data=data,
+        extra_since=datetime(2026, 11, 3, 0, tzinfo=BERLIN),
+    )
+
+
+async def test_mark_normal_service(hass: HomeAssistant, night) -> None:
+    await _labelled_setup(hass)
+    last = hass.states.get("binary_sensor.base_load_last_night_anomaly")
+    assert last.attributes["deviation"] > 30
+
+    await hass.services.async_call("base_load", "mark_normal", {}, blocking=True)
+    await hass.async_block_till_done()
+
+    last = hass.states.get("binary_sensor.base_load_last_night_anomaly")
+    cause = hass.states.get("sensor.base_load_last_night_probable_cause")
+    assert last.attributes["status"] == "marked_normal"
+    assert last.state == "off"
+    assert cause.state.startswith("Confirmed as normal")
+
+
+async def test_label_night_and_recognise(hass: HomeAssistant, night) -> None:
+    entry = await _labelled_setup(hass)
+    coordinator = entry.runtime_data
+    pattern = coordinator.data.last_night_explanation.pattern
+    assert pattern is not None and pattern.shape is not None
+
+    extra = datetime(2026, 11, 3, 0, tzinfo=BERLIN)
+    with patch(
+        "custom_components.base_load.coordinator.statistics_during_period",
+        side_effect=fake_statistics(262.0, extra_since=extra),
+    ):
+        await hass.services.async_call(
+            "base_load", "label_night", {"label": "Dishwasher"}, blocking=True
+        )
+        await hass.async_block_till_done()
+
+    assert [label.name for label in coordinator._labels] == ["Dishwasher"]
+    cause = hass.states.get("sensor.base_load_last_night_probable_cause")
+    assert "Dishwasher" in cause.state
+
+
+async def test_morning_notification(hass: HomeAssistant, night) -> None:
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    from custom_components.base_load.morning import async_send_morning
+
+    calls = async_mock_service(hass, "notify", "mobile_app_test")
+    data = {**ENTRY_DATA, "min_deviation": 30, "notify_service": "notify.mobile_app_test"}
+    entry = await _setup(
+        hass,
+        current_grid=262.0,
+        data=data,
+        extra_since=datetime(2026, 11, 3, 0, tzinfo=BERLIN),
+    )
+    with (
+        patch(
+            "custom_components.base_load.coordinator.statistics_during_period",
+            side_effect=fake_statistics(262.0, extra_since=datetime(2026, 11, 3, 0, tzinfo=BERLIN)),
+        ),
+        patch(
+            "custom_components.base_load.coordinator.history.get_significant_states",
+            return_value={},
+        ),
+    ):
+        await async_send_morning(hass, entry)
+        await hass.async_block_till_done()
+
+    assert len(calls) == 1
+    payload = calls[0].data
+    assert payload["title"].startswith("Base load last night +")
+    actions = [action["action"] for action in payload["data"]["actions"]]
+    assert actions[0].startswith("BASE_LOAD_NORMAL|")
+    assert payload["data"]["actions"][1]["behavior"] == "textInput"
+
+    # The notification action marks the night as normal.
+    hass.bus.async_fire("mobile_app_notification_action", {"action": actions[0]})
+    await hass.async_block_till_done()
+    assert entry.runtime_data.data.last_night_marked_normal

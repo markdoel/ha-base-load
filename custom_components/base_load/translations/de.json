@@ -18,7 +18,9 @@
           "candidate_sensors": "Geräte für die Ursachenanalyse",
           "half_life_days": "Halbwertszeit der Baseline",
           "presence_entity": "Anwesenheit",
-          "price_entity": "Strompreis"
+          "price_entity": "Strompreis",
+          "notify_service": "Benachrichtigungsdienst",
+          "notify_time": "Uhrzeit der Benachrichtigung"
         },
         "data_description": {
           "grid_sensor": "Netzbezug in W. Negative Werte bedeuten Einspeisung.",
@@ -30,13 +32,15 @@
           "candidate_sensors": "Gemessene Geräte (Steckdosen, Zwischenzähler), die bei einer Abweichung geprüft werden. Keinen Gruppensensor zusammen mit seinen Mitgliedern wählen.",
           "half_life_days": "So alte Nächte zählen nur noch halb. Kleinere Werte folgen dauerhaften Änderungen (Heizsaison) schneller. 0 gewichtet alle Nächte gleich.",
           "presence_entity": "Nächte, in denen niemand zu Hause war, werden übersprungen und nicht in die Baseline übernommen. zone.home (abwesend bei 0 Personen), eine Person oder Gruppe (abwesend, wenn nicht zu Hause) oder ein Urlaubsschalter (an bedeutet abwesend).",
-          "price_entity": "Sensor oder Zahl mit dem Preis pro kWh, z. B. EUR/kWh oder ct/kWh. Dynamische Preise werden aus der Statistik über 30 Tage gemittelt."
+          "price_entity": "Sensor oder Zahl mit dem Preis pro kWh, z. B. EUR/kWh oder ct/kWh. Dynamische Preise werden aus der Statistik über 30 Tage gemittelt.",
+          "notify_service": "z. B. notify.mobile_app_pixel. Schickt morgens eine Nachricht nach auffälligen Nächten und bei neuen Grundlast-Niveaus, mit Knöpfen zum Bestätigen oder Benennen der Ursache. Leer lassen zum Abschalten."
         }
       }
     },
     "error": {
       "duplicate_sensor": "Ein Sensor ist mehrfach ausgewählt.",
-      "empty_window": "Beginn und Ende des Nachtfensters müssen sich unterscheiden."
+      "empty_window": "Beginn und Ende des Nachtfensters müssen sich unterscheiden.",
+      "unknown_notify_service": "Unbekannter Benachrichtigungsdienst. Bitte den vollen Namen angeben, z. B. notify.mobile_app_pixel."
     },
     "abort": {
       "already_configured": "Diese Netzleistung wird bereits überwacht."
@@ -59,19 +63,23 @@
           "candidate_sensors": "Geräte für die Ursachenanalyse",
           "half_life_days": "Halbwertszeit der Baseline",
           "presence_entity": "Anwesenheit",
-          "price_entity": "Strompreis"
+          "price_entity": "Strompreis",
+          "notify_service": "Benachrichtigungsdienst",
+          "notify_time": "Uhrzeit der Benachrichtigung"
         },
         "data_description": {
           "candidate_sensors": "Gemessene Geräte (Steckdosen, Zwischenzähler), die bei einer Abweichung geprüft werden. Keinen Gruppensensor zusammen mit seinen Mitgliedern wählen.",
           "half_life_days": "So alte Nächte zählen nur noch halb. Kleinere Werte folgen dauerhaften Änderungen (Heizsaison) schneller. 0 gewichtet alle Nächte gleich.",
           "presence_entity": "Nächte, in denen niemand zu Hause war, werden übersprungen und nicht in die Baseline übernommen. zone.home (abwesend bei 0 Personen), eine Person oder Gruppe (abwesend, wenn nicht zu Hause) oder ein Urlaubsschalter (an bedeutet abwesend).",
-          "price_entity": "Sensor oder Zahl mit dem Preis pro kWh, z. B. EUR/kWh oder ct/kWh. Dynamische Preise werden aus der Statistik über 30 Tage gemittelt."
+          "price_entity": "Sensor oder Zahl mit dem Preis pro kWh, z. B. EUR/kWh oder ct/kWh. Dynamische Preise werden aus der Statistik über 30 Tage gemittelt.",
+          "notify_service": "z. B. notify.mobile_app_pixel. Schickt morgens eine Nachricht nach auffälligen Nächten und bei neuen Grundlast-Niveaus, mit Knöpfen zum Bestätigen oder Benennen der Ursache. Leer lassen zum Abschalten."
         }
       }
     },
     "error": {
       "duplicate_sensor": "Ein Sensor ist mehrfach ausgewählt.",
-      "empty_window": "Beginn und Ende des Nachtfensters müssen sich unterscheiden."
+      "empty_window": "Beginn und Ende des Nachtfensters müssen sich unterscheiden.",
+      "unknown_notify_service": "Unbekannter Benachrichtigungsdienst. Bitte den vollen Namen angeben, z. B. notify.mobile_app_pixel."
     }
   },
   "entity": {
@@ -177,6 +185,9 @@
           },
           "onset": {
             "name": "Beginn"
+          },
+          "label": {
+            "name": "Bezeichnung"
           }
         }
       },
@@ -204,6 +215,9 @@
           },
           "onset": {
             "name": "Beginn"
+          },
+          "label": {
+            "name": "Bezeichnung"
           }
         }
       },
@@ -260,6 +274,31 @@
           },
           "date": {
             "name": "Datum"
+          }
+        }
+      },
+      "unmeasured": {
+        "name": "Ungemessene Grundlast",
+        "state_attributes": {
+          "total": {
+            "name": "Gesamt"
+          },
+          "measured": {
+            "name": "Gemessen"
+          },
+          "devices": {
+            "name": "Geräte"
+          },
+          "currency": {
+            "name": "Währung"
+          }
+        }
+      },
+      "level_shift": {
+        "name": "Neues Grundlast-Niveau",
+        "state_attributes": {
+          "shifts": {
+            "name": "Niveauwechsel"
           }
         }
       }
@@ -322,7 +361,8 @@
               "away": "Niemand zu Hause",
               "no_data": "Keine Daten",
               "learning": "Lernphase",
-              "evaluated": "Ausgewertet"
+              "evaluated": "Ausgewertet",
+              "marked_normal": "Als normal bestätigt"
             }
           },
           "hours": {
@@ -356,6 +396,48 @@
     "sensor_missing": {
       "title": "Base Load Monitor: Sensoren fehlen",
       "description": "{title} nutzt Entitäten, die es nicht mehr gibt: {entities}. Bitte unter Konfigurieren Ersatz auswählen, sonst sind die Ergebnisse unvollständig."
+    }
+  },
+  "services": {
+    "mark_normal": {
+      "name": "Nacht als normal markieren",
+      "description": "Bestätigt eine Nacht als normal, sie wird dann nicht mehr gemeldet.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eintrag",
+          "description": "Base-Load-Monitor-Eintrag. Leer lassen für alle."
+        },
+        "date": {
+          "name": "Datum",
+          "description": "Morgen nach der Nacht. Standard ist die letzte Nacht."
+        }
+      }
+    },
+    "label_night": {
+      "name": "Ursache einer Nacht benennen",
+      "description": "Speichert das ungeklärte Muster der letzten Nacht unter einem Namen und erkennt es später wieder.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Eintrag",
+          "description": "Base-Load-Monitor-Eintrag. Leer lassen für alle."
+        },
+        "label": {
+          "name": "Name",
+          "description": "Was es war, z. B. Geschirrspüler."
+        },
+        "date": {
+          "name": "Datum",
+          "description": "Morgen nach der Nacht. Nur die letzte Nacht kann benannt werden."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "entry_not_found": {
+      "message": "Kein geladener Base-Load-Monitor-Eintrag gefunden."
+    },
+    "nothing_to_label": {
+      "message": "Die Nacht hat kein ungeklärtes Muster, das benannt werden könnte."
     }
   }
 }

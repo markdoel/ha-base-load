@@ -76,3 +76,13 @@ MAX_FAILED_UPDATES: Final = 6
 
 STORAGE_VERSION: Final = 1
 ISSUE_SENSOR_MISSING: Final = "sensor_missing"
+
+CONF_NOTIFY_SERVICE: Final = "notify_service"
+CONF_NOTIFY_TIME: Final = "notify_time"
+DEFAULT_NOTIFY_TIME: Final = "06:30:00"
+
+EVENT_LEVEL_SHIFT: Final = "base_load_level_shift"
+ACTION_NORMAL: Final = "BASE_LOAD_NORMAL"
+ACTION_LABEL: Final = "BASE_LOAD_LABEL"
+SERVICE_MARK_NORMAL: Final = "mark_normal"
+SERVICE_LABEL_NIGHT: Final = "label_night"

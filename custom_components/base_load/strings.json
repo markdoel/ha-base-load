@@ -18,7 +18,9 @@
           "candidate_sensors": "Devices for cause analysis",
           "half_life_days": "Half life of the baseline",
           "presence_entity": "Presence",
-          "price_entity": "Electricity price"
+          "price_entity": "Electricity price",
+          "notify_service": "Notification service",
+          "notify_time": "Notification time"
         },
         "data_description": {
           "grid_sensor": "Power from the grid in W. Negative values mean export.",
@@ -30,13 +32,15 @@
           "candidate_sensors": "Measured devices (plugs, sub-meters) that are checked when the base load deviates. Do not combine a group sensor with its members.",
           "half_life_days": "Nights this many days old count half. Lower values follow lasting changes (heating season) faster. 0 weighs all nights equally.",
           "presence_entity": "Nights in which nobody was home are skipped and left out of the baseline. zone.home (away at 0 persons), a person or group (away unless home), or a holiday switch (on means away).",
-          "price_entity": "Sensor or number with the price per kWh, e.g. EUR/kWh or ct/kWh. Dynamic prices are averaged over 30 days from statistics."
+          "price_entity": "Sensor or number with the price per kWh, e.g. EUR/kWh or ct/kWh. Dynamic prices are averaged over 30 days from statistics.",
+          "notify_service": "e.g. notify.mobile_app_pixel. Sends a morning message after unusual nights and on new base load levels, with buttons to confirm or name the cause. Leave empty to disable."
         }
       }
     },
     "error": {
       "duplicate_sensor": "A sensor is selected more than once.",
-      "empty_window": "Start and end of the night window must differ."
+      "empty_window": "Start and end of the night window must differ.",
+      "unknown_notify_service": "Unknown notify service. Use the full name, e.g. notify.mobile_app_pixel."
     },
     "abort": {
       "already_configured": "This grid sensor is already monitored."
@@ -59,19 +63,23 @@
           "candidate_sensors": "Devices for cause analysis",
           "half_life_days": "Half life of the baseline",
           "presence_entity": "Presence",
-          "price_entity": "Electricity price"
+          "price_entity": "Electricity price",
+          "notify_service": "Notification service",
+          "notify_time": "Notification time"
         },
         "data_description": {
           "candidate_sensors": "Measured devices (plugs, sub-meters) that are checked when the base load deviates. Do not combine a group sensor with its members.",
           "half_life_days": "Nights this many days old count half. Lower values follow lasting changes (heating season) faster. 0 weighs all nights equally.",
           "presence_entity": "Nights in which nobody was home are skipped and left out of the baseline. zone.home (away at 0 persons), a person or group (away unless home), or a holiday switch (on means away).",
-          "price_entity": "Sensor or number with the price per kWh, e.g. EUR/kWh or ct/kWh. Dynamic prices are averaged over 30 days from statistics."
+          "price_entity": "Sensor or number with the price per kWh, e.g. EUR/kWh or ct/kWh. Dynamic prices are averaged over 30 days from statistics.",
+          "notify_service": "e.g. notify.mobile_app_pixel. Sends a morning message after unusual nights and on new base load levels, with buttons to confirm or name the cause. Leave empty to disable."
         }
       }
     },
     "error": {
       "duplicate_sensor": "A sensor is selected more than once.",
-      "empty_window": "Start and end of the night window must differ."
+      "empty_window": "Start and end of the night window must differ.",
+      "unknown_notify_service": "Unknown notify service. Use the full name, e.g. notify.mobile_app_pixel."
     }
   },
   "entity": {
@@ -177,6 +185,9 @@
           },
           "onset": {
             "name": "Onset"
+          },
+          "label": {
+            "name": "Label"
           }
         }
       },
@@ -204,6 +215,9 @@
           },
           "onset": {
             "name": "Onset"
+          },
+          "label": {
+            "name": "Label"
           }
         }
       },
@@ -260,6 +274,31 @@
           },
           "date": {
             "name": "Date"
+          }
+        }
+      },
+      "unmeasured": {
+        "name": "Unmeasured base load",
+        "state_attributes": {
+          "total": {
+            "name": "Total"
+          },
+          "measured": {
+            "name": "Measured"
+          },
+          "devices": {
+            "name": "Devices"
+          },
+          "currency": {
+            "name": "Currency"
+          }
+        }
+      },
+      "level_shift": {
+        "name": "New base load level",
+        "state_attributes": {
+          "shifts": {
+            "name": "Shifts"
           }
         }
       }
@@ -322,7 +361,8 @@
               "away": "Nobody home",
               "no_data": "No data",
               "learning": "Learning",
-              "evaluated": "Evaluated"
+              "evaluated": "Evaluated",
+              "marked_normal": "Confirmed as normal"
             }
           },
           "hours": {
@@ -356,6 +396,48 @@
     "sensor_missing": {
       "title": "Base Load Monitor: sensors missing",
       "description": "{title} uses entities that no longer exist: {entities}. Select replacements under Configure, otherwise the results are incomplete."
+    }
+  },
+  "services": {
+    "mark_normal": {
+      "name": "Mark night as normal",
+      "description": "Confirms a night as normal, so it is no longer reported.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Entry",
+          "description": "Base Load Monitor entry. Leave empty for all."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Morning of the night. Defaults to the last night."
+        }
+      }
+    },
+    "label_night": {
+      "name": "Name the cause of a night",
+      "description": "Stores the unexplained pattern of the last night under a name and recognises it later.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Entry",
+          "description": "Base Load Monitor entry. Leave empty for all."
+        },
+        "label": {
+          "name": "Name",
+          "description": "What caused it, e.g. dishwasher."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Morning of the night. Only the last night can be named."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "entry_not_found": {
+      "message": "No loaded Base Load Monitor entry found."
+    },
+    "nothing_to_label": {
+      "message": "The night has no unexplained pattern that could be named."
     }
   }
 }

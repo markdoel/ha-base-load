@@ -23,6 +23,7 @@ from .const import DAY_TYPE_WEEKEND, DAY_TYPE_WORKDAY
 from .coordinator import BaseLoadConfigEntry, BaseLoadData
 from .cost import annual_cost
 from .entity import BaseLoadEntity
+from .morning import entity_name
 
 
 def _round(value: float | None, digits: int = 0) -> float | None:
@@ -141,6 +142,7 @@ async def async_setup_entry(
         BaseLoadCauseSensor(coordinator, "cause", last_night=False),
         BaseLoadCauseSensor(coordinator, "last_night_cause", last_night=True),
     ]
+    entities += [BaseLoadUnmeasuredSensor(coordinator), BaseLoadShiftSensor(coordinator)]
     if coordinator.price_entity:
         entities += [
             BaseLoadCostSensor(coordinator, "annual_cost", deviation=False),
@@ -176,6 +178,7 @@ _TEXT = {
         "constant": "dauerhaft",
         "intermittent": "zeitweise",
         "since": "ab",
+        "confirmed": "Als normal bestätigt",
     },
     "en": {
         "none": "Nothing unusual",
@@ -183,6 +186,7 @@ _TEXT = {
         "constant": "constant",
         "intermittent": "intermittent",
         "since": "since",
+        "confirmed": "Confirmed as normal",
     },
 }
 # Unexplained rest is mentioned only if it is a real part of the deviation.
@@ -240,7 +244,9 @@ class BaseLoadCauseSensor(BaseLoadEntity, SensorEntity):
             f"{self._name_of(cause.entity_id)} {_watts(cause.deviation)}"
             for cause in explanation.causes
         ]
-        if self._show_unexplained(explanation) or not parts:
+        if explanation.label and (self._show_unexplained(explanation) or not parts):
+            parts.append(f"{explanation.label} {_watts(explanation.unexplained)}")
+        elif self._show_unexplained(explanation) or not parts:
             rest = f"{text['unmeasured']} {_watts(explanation.unexplained)}"
             pattern = explanation.pattern
             if pattern is not None and pattern.shape is not None:
@@ -251,7 +257,10 @@ class BaseLoadCauseSensor(BaseLoadEntity, SensorEntity):
                 rest = f"{rest} ({detail})"
             parts.append(rest)
         value = ", ".join(parts)
-        return value[0].upper() + value[1:]
+        value = value[0].upper() + value[1:]
+        if self._last_night and self.coordinator.data.last_night_marked_normal:
+            value = f"{text['confirmed']}: {value}"
+        return value
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any]:
@@ -276,6 +285,7 @@ class BaseLoadCauseSensor(BaseLoadEntity, SensorEntity):
                 for cause in explanation.causes
             ],
             "unexplained": round(explanation.unexplained),
+            "label": explanation.label,
             "pattern": pattern.shape if pattern else None,
             "onset": pattern.onset if pattern else None,
         }
@@ -329,3 +339,96 @@ class BaseLoadCostSensor(BaseLoadEntity, SensorEntity):
                 # What last night's extra load cost during the night window.
                 attrs["last_night_cost"] = round(watts / 1000 * data.window_hours * data.price, 3)
         return attrs
+
+
+class BaseLoadUnmeasuredSensor(BaseLoadEntity, SensorEntity):
+    """Base load no selected device explains, with a breakdown per device."""
+
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "unmeasured")
+
+    @property
+    def native_value(self) -> float | None:
+        value = self.coordinator.data.unmeasured_load
+        return None if value is None else round(value)
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any]:
+        data = self.coordinator.data
+        total = data.weekly_base_load
+        price = data.price
+
+        def row(name: str, watts: float, entity_id: str | None = None) -> dict[str, Any]:
+            item: dict[str, Any] = {"name": name, "power": round(watts)}
+            if entity_id:
+                item["entity_id"] = entity_id
+            if total:
+                item["share"] = round(watts / total * 100)
+            if price is not None:
+                item["cost_per_year"] = round(annual_cost(watts, price))
+            return item
+
+        rows = [
+            row(entity_name(self.hass, sensor), watts, sensor)
+            for sensor, watts in sorted(
+                data.device_loads.items(), key=lambda item: item[1], reverse=True
+            )
+            if round(watts) > 0
+        ]
+        return {
+            "total": None if total is None else round(total),
+            "measured": round(sum(data.device_loads.values())),
+            "devices": rows,
+            "currency": data.currency if price is not None else None,
+        }
+
+
+class BaseLoadShiftSensor(BaseLoadEntity, SensorEntity):
+    """Lasting changes of the night load, newest first."""
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator, "level_shift")
+
+    def _name(self, entity_id: str) -> str:
+        if entity_id == self.coordinator.grid_sensor:
+            language = (self.hass.config.language or "en").split("-")[0]
+            return "Haus gesamt" if language == "de" else "Whole house"
+        return entity_name(self.hass, entity_id)
+
+    @property
+    def native_value(self) -> str:
+        shifts = self.coordinator.data.shifts
+        if not shifts:
+            language = (self.hass.config.language or "en").split("-")[0]
+            return _TEXT.get(language, _TEXT["en"])["none"]
+        language = (self.hass.config.language or "en").split("-")[0]
+        since = "seit" if language == "de" else "since"
+        return ", ".join(
+            f"{self._name(s.entity_id)} {_watts(s.delta)} {since} {s.since.strftime('%d.%m.')}"
+            for s in shifts
+        )
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any]:
+        data = self.coordinator.data
+        return {
+            "shifts": [
+                {
+                    "entity_id": s.entity_id,
+                    "name": self._name(s.entity_id),
+                    "delta": round(s.delta),
+                    "before": round(s.before),
+                    "after": round(s.after),
+                    "since": s.since,
+                    "cost_per_year": (
+                        round(annual_cost(s.delta, data.price)) if data.price is not None else None
+                    ),
+                }
+                for s in data.shifts
+            ]
+        }

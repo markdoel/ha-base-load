@@ -82,8 +82,11 @@ class BaseLoadLastNightAnomaly(BaseLoadEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        evaluation = self.coordinator.data.last_night_evaluation
-        return None if evaluation is None else evaluation.is_anomaly
+        data = self.coordinator.data
+        evaluation = data.last_night_evaluation
+        if evaluation is None:
+            return None
+        return evaluation.is_anomaly and not data.last_night_marked_normal
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any]:
@@ -107,6 +110,8 @@ class BaseLoadLastNightAnomaly(BaseLoadEntity, BinarySensorEntity):
             return "no_data"
         if data.last_night_evaluation is None:
             return "learning"
+        if data.last_night_marked_normal:
+            return "marked_normal"
         return "evaluated"
 
 

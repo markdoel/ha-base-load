@@ -22,6 +22,8 @@ from .const import (
     CONF_MIN_DEVIATION,
     CONF_NIGHT_END,
     CONF_NIGHT_START,
+    CONF_NOTIFY_SERVICE,
+    CONF_NOTIFY_TIME,
     CONF_PRESENCE_ENTITY,
     CONF_PRICE_ENTITY,
     CONF_SENSITIVITY,
@@ -32,6 +34,7 @@ from .const import (
     DEFAULT_NAME,
     DEFAULT_NIGHT_END,
     DEFAULT_NIGHT_START,
+    DEFAULT_NOTIFY_TIME,
     DEFAULT_SENSITIVITY,
     DOMAIN,
     PRESENCE_DOMAINS,
@@ -144,7 +147,20 @@ def _tuning_schema(defaults: dict[str, Any]) -> dict[vol.Marker, Any]:
     }
 
 
-def _validate(user_input: dict[str, Any]) -> dict[str, str]:
+def _notify_schema(defaults: dict[str, Any]) -> dict[vol.Marker, Any]:
+    """Morning notification, shared by setup and options."""
+    return {
+        vol.Optional(
+            CONF_NOTIFY_SERVICE,
+            description={"suggested_value": defaults.get(CONF_NOTIFY_SERVICE)},
+        ): selector.TextSelector(),
+        vol.Required(
+            CONF_NOTIFY_TIME, default=defaults.get(CONF_NOTIFY_TIME, DEFAULT_NOTIFY_TIME)
+        ): selector.TimeSelector(),
+    }
+
+
+def _validate(user_input: dict[str, Any], hass=None) -> dict[str, str]:
     errors: dict[str, str] = {}
     grid = user_input[CONF_GRID_SENSOR]
     sources = set(user_input.get(CONF_FEED_IN_SENSORS, []))
@@ -158,6 +174,12 @@ def _validate(user_input: dict[str, Any]) -> dict[str, str]:
         errors["base"] = "duplicate_sensor"
     if int(user_input[CONF_NIGHT_START]) == int(user_input[CONF_NIGHT_END]):
         errors[CONF_NIGHT_END] = "empty_window"
+    service = (user_input.get(CONF_NOTIFY_SERVICE) or "").strip()
+    if service and (
+        not service.startswith("notify.")
+        or (hass and not hass.services.has_service("notify", service.split(".", 1)[1]))
+    ):
+        errors[CONF_NOTIFY_SERVICE] = "unknown_notify_service"
     return errors
 
 
@@ -169,7 +191,7 @@ class BaseLoadConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = _validate(user_input)
+            errors = _validate(user_input, self.hass)
             if not errors:
                 await self.async_set_unique_id(user_input[CONF_GRID_SENSOR])
                 self._abort_if_unique_id_configured()
@@ -184,6 +206,7 @@ class BaseLoadConfigFlow(ConfigFlow, domain=DOMAIN):
                 ): selector.TextSelector(),
                 **_sources_schema(defaults),
                 **_tuning_schema(defaults),
+                **_notify_schema(defaults),
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
@@ -200,10 +223,12 @@ class BaseLoadOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = _validate(user_input)
+            errors = _validate(user_input, self.hass)
             if not errors:
                 return self.async_create_entry(data=user_input)
 
         defaults = user_input or {**self.config_entry.data, **self.config_entry.options}
-        schema = vol.Schema({**_sources_schema(defaults), **_tuning_schema(defaults)})
+        schema = vol.Schema(
+            {**_sources_schema(defaults), **_tuning_schema(defaults), **_notify_schema(defaults)}
+        )
         return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

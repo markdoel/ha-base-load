@@ -50,6 +50,20 @@ sections:
   - type: grid
     cards:
       - type: heading
+        heading: Breakdown
+      - type: tile
+        entity: sensor.base_load_new_base_load_level
+      - type: markdown
+        content: >-
+          | Device | W | Share | Cost/year |
+          |---|--:|--:|--:|
+          {% for d in state_attr('sensor.base_load_unmeasured_base_load', 'devices') or [] %}
+          | {{ d.name }} | {{ d.power }} | {{ d.share }} % | {{ d.cost_per_year }} |
+          {% endfor %}
+          | **Unmeasured** | **{{ states('sensor.base_load_unmeasured_base_load') }}** | | |
+  - type: grid
+    cards:
+      - type: heading
         heading: Cost and data
       - type: tile
         entity: sensor.base_load_base_load_cost_per_year

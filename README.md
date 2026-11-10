@@ -68,6 +68,29 @@ the score stays below the anomaly threshold.
 Do not select a group sensor together with its members, the deviation would be
 counted twice.
 
+## Breakdown and level shifts
+
+- **Unmeasured base load** shows how much of the weekly base load no selected
+  device explains. Its `devices` attribute ranks the selected devices by their own
+  night load, with share and cost per year: the list to start saving with.
+- **New base load level** detects lasting changes. If the last three nights of the
+  house or a device all sit clearly off the level of nights older than ten days, it
+  reports the change and the night it started, e.g. `Heizung +77 W since 02.11.`.
+  Each new shift also fires the event `base_load_level_shift` once.
+
+## Morning notification and feedback
+
+Set a notify service (e.g. `notify.mobile_app_pixel`) and a time. After an unusual
+night, or when a new level shift appears, a message is sent with the probable cause
+and the yearly cost. Mobile app notifications get two buttons:
+
+- **Normal**: the night is confirmed and no longer reported.
+- **Name it**: type what it was, e.g. `Dishwasher`. The unexplained pattern of that
+  night (size, start time, duration, constant or intermittent) is stored under the
+  name. Similar patterns are later reported with that name instead of "unmeasured".
+
+The same is available as services `base_load.mark_normal` and `base_load.label_night`.
+
 ## Presence and holidays
 
 Select a presence entity to skip nights in which nobody was home:
@@ -118,6 +141,8 @@ long-term statistics. Entities without statistics use their current value.
 | `binary_sensor.<name>_last_night_anomaly` | Verdict for the last completed night, ideal for a morning notification. Attribute `status`: `evaluated`, `away`, `no_data`, `learning` |
 | `sensor.<name>_base_load_cost_per_year` | Only with a price entity |
 | `sensor.<name>_deviation_cost_per_year` | Only with a price entity |
+| `sensor.<name>_unmeasured_base_load` | Base load not explained by selected devices, attribute `devices` with power, share and cost |
+| `sensor.<name>_new_base_load_level` | Lasting level shifts, attribute `shifts` |
 | `sensor.<name>_data_quality` | Diagnostic, share of valid night hours |
 | `binary_sensor.<name>_data_incomplete` | Diagnostic, attribute `reasons` |
 

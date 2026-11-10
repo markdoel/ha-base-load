@@ -11,7 +11,7 @@ Two parts:
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from statistics import median
@@ -50,6 +50,26 @@ class Pattern:
     onset: datetime | None
     shape: str | None
     share: float
+    # Typical excess while deviating, and for how long it deviated in the window.
+    magnitude: float | None = None
+    duration: timedelta | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Label:
+    """A pattern the user named, e.g. "dishwasher"."""
+
+    name: str
+    magnitude: float
+    onset_minutes: int
+    duration_minutes: int
+    shape: str
+
+
+# Tolerances for recognising a labelled pattern again.
+LABEL_MAGNITUDE_TOLERANCE = 0.35
+LABEL_ONSET_TOLERANCE_MIN = 90
+LABEL_DURATION_TOLERANCE = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +79,7 @@ class Explanation:
     total: float
     causes: list[Cause] = field(default_factory=list)
     pattern: Pattern | None = None
+    label: str | None = None
 
     @property
     def explained(self) -> float:
@@ -163,13 +184,19 @@ def describe_pattern(
         return Pattern(onset=None, shape=None, share=share)
 
     onset = in_window[first][0]
+    excess = [
+        abs(value - baseline) for (_, value), flag in zip(in_window, flags, strict=True) if flag
+    ]
+    step = in_window[1][0] - in_window[0][0] if len(in_window) > 1 else timedelta(minutes=5)
+    magnitude = median(excess)
+    duration = step * len(excess)
     if first == 0:
         before = [(m, v) for m, v in ordered if m < window_start]
         for moment, value in reversed(before):
             if not above(value):
                 break
             onset = moment
-    return Pattern(onset=onset, shape=shape, share=share)
+    return Pattern(onset=onset, shape=shape, share=share, magnitude=magnitude, duration=duration)
 
 
 def window_bounds(night: date, start: int, end: int, tz) -> tuple[datetime, datetime]:
@@ -184,3 +211,57 @@ def median_in(series: Series, start: datetime, end: datetime) -> float | None:
     """Median of all values with start <= moment < end."""
     values = [value for moment, value in series.items() if start <= moment < end]
     return median(values) if values else None
+
+
+def minutes_after_noon(moment: datetime) -> int:
+    """Minutes since 12:00 the day before, so night times compare across midnight."""
+    return ((moment.hour - 12) % 24) * 60 + moment.minute
+
+
+def label_from(name: str, pattern: Pattern) -> Label | None:
+    """Store a pattern under a name. None if the pattern is too vague."""
+    if (
+        pattern.shape is None
+        or pattern.onset is None
+        or pattern.magnitude is None
+        or pattern.duration is None
+    ):
+        return None
+    return Label(
+        name=name.strip(),
+        magnitude=pattern.magnitude,
+        onset_minutes=minutes_after_noon(pattern.onset),
+        duration_minutes=int(pattern.duration.total_seconds() // 60),
+        shape=pattern.shape,
+    )
+
+
+def match_label(pattern: Pattern | None, labels: Iterable[Label]) -> str | None:
+    """Name of the closest labelled pattern within the tolerances, if any."""
+    if (
+        pattern is None
+        or pattern.shape is None
+        or pattern.onset is None
+        or pattern.magnitude is None
+        or pattern.duration is None
+    ):
+        return None
+    onset = minutes_after_noon(pattern.onset)
+    duration = pattern.duration.total_seconds() / 60
+    best: tuple[float, str] | None = None
+    for label in labels:
+        if label.shape != pattern.shape:
+            continue
+        magnitude_diff = abs(pattern.magnitude - label.magnitude) / max(label.magnitude, 1.0)
+        onset_diff = abs(onset - label.onset_minutes)
+        duration_diff = abs(duration - label.duration_minutes) / max(label.duration_minutes, 5)
+        if (
+            magnitude_diff > LABEL_MAGNITUDE_TOLERANCE
+            or onset_diff > LABEL_ONSET_TOLERANCE_MIN
+            or duration_diff > LABEL_DURATION_TOLERANCE
+        ):
+            continue
+        score = magnitude_diff + onset_diff / LABEL_ONSET_TOLERANCE_MIN + duration_diff
+        if best is None or score < best[0]:
+            best = (score, label.name)
+    return best[1] if best else None

@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from homeassistant.const import Platform
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import (
     EventEntityRegistryUpdatedData,
     async_track_entity_registry_updated_event,
 )
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers.typing import ConfigType
+from homeassistant.util import dt as dt_util
+import voluptuous as vol
 
 from .const import (
     CONF_CANDIDATE_SENSORS,
@@ -20,9 +26,58 @@ from .const import (
     CONF_PRESENCE_ENTITY,
     CONF_PRICE_ENTITY,
     DOMAIN,
+    SERVICE_LABEL_NIGHT,
+    SERVICE_MARK_NORMAL,
     STORAGE_VERSION,
 )
 from .coordinator import BaseLoadConfigEntry, BaseLoadCoordinator
+from .morning import async_setup_notifications
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+_ENTRY = "config_entry_id"
+_MARK_SCHEMA = vol.Schema({vol.Optional(_ENTRY): cv.string, vol.Optional("date"): cv.date})
+_LABEL_SCHEMA = _MARK_SCHEMA.extend({vol.Required("label"): vol.All(cv.string, vol.Length(min=1))})
+
+
+def _coordinators(hass: HomeAssistant, call: ServiceCall) -> list[BaseLoadCoordinator]:
+    entries = [
+        entry
+        for entry in hass.config_entries.async_loaded_entries(DOMAIN)
+        if _ENTRY not in call.data or entry.entry_id == call.data[_ENTRY]
+    ]
+    if not entries:
+        raise ServiceValidationError(translation_domain=DOMAIN, translation_key="entry_not_found")
+    return [entry.runtime_data for entry in entries]
+
+
+def _night(coordinator: BaseLoadCoordinator, call: ServiceCall) -> date:
+    if "date" in call.data:
+        return call.data["date"]
+    data = coordinator.data
+    return data.last_night_date if data and data.last_night_date else dt_util.now().date()
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register the feedback services."""
+
+    async def _mark_normal(call: ServiceCall) -> None:
+        for coordinator in _coordinators(hass, call):
+            await coordinator.async_mark_normal(_night(coordinator, call))
+
+    async def _label_night(call: ServiceCall) -> None:
+        for coordinator in _coordinators(hass, call):
+            if not await coordinator.async_label_night(
+                _night(coordinator, call), call.data["label"]
+            ):
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN, translation_key="nothing_to_label"
+                )
+
+    hass.services.async_register(DOMAIN, SERVICE_MARK_NORMAL, _mark_normal, _MARK_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_LABEL_NIGHT, _label_night, _LABEL_SCHEMA)
+    return True
+
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
@@ -73,6 +128,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: BaseLoadConfigEntry) -> 
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    async_setup_notifications(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
 

@@ -1,0 +1,28 @@
+mark_normal:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: base_load
+    date:
+      required: false
+      selector:
+        date:
+
+label_night:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: base_load
+    label:
+      required: true
+      example: Dishwasher
+      selector:
+        text:
+    date:
+      required: false
+      selector:
+        date:

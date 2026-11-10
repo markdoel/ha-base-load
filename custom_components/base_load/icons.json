@@ -27,6 +27,12 @@
       },
       "deviation_cost": {
         "default": "mdi:cash-plus"
+      },
+      "unmeasured": {
+        "default": "mdi:help-circle-outline"
+      },
+      "level_shift": {
+        "default": "mdi:stairs-up"
       }
     },
     "binary_sensor": {
@@ -48,6 +54,14 @@
           "off": "mdi:database-check"
         }
       }
+    }
+  },
+  "services": {
+    "mark_normal": {
+      "service": "mdi:check-circle-outline"
+    },
+    "label_night": {
+      "service": "mdi:tag-outline"
     }
   }
 }
