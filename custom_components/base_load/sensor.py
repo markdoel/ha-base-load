@@ -380,7 +380,7 @@ class BaseLoadUnmeasuredSensor(BaseLoadEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> Mapping[str, Any]:
         data = self.coordinator.data
-        total = data.weekly_base_load
+        total = data.breakdown_total
         price = data.price
 
         def row(name: str, watts: float, entity_id: str | None = None) -> dict[str, Any]:

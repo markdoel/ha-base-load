@@ -409,6 +409,10 @@ async def test_level_shift_detected(hass: HomeAssistant, night) -> None:
     assert entries[HEATER]["delta"] == 70
     assert str(entries[HEATER]["since"]) == "2026-10-31"
     assert any(event.data["entity_id"] == HEATER for event in events)
+    # The breakdown shows the current level, not the lagging baseline.
+    unmeasured = hass.states.get("sensor.base_load_unmeasured_base_load")
+    heater = next(d for d in unmeasured.attributes["devices"] if d["entity_id"] == HEATER)
+    assert heater["power"] == 90
 
 
 async def test_no_level_shift_on_stable_data(hass: HomeAssistant, night) -> None:

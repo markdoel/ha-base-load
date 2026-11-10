@@ -126,6 +126,7 @@ class BaseLoadData:
     last_night_marked_normal: bool = False
     shifts: list[LevelShift] = field(default_factory=list)
     device_loads: dict[str, float] = field(default_factory=dict)
+    recent_base_load: float | None = None
 
     @property
     def expected(self) -> BaselineStats | None:
@@ -150,11 +151,16 @@ class BaseLoadData:
 
     @property
     def unmeasured_load(self) -> float | None:
-        """Part of the weekly base load that no selected device explains."""
-        total = self.weekly_base_load
+        """Part of the current base load that no selected device explains."""
+        total = self.breakdown_total
         if total is None:
             return None
         return total - sum(self.device_loads.values())
+
+    @property
+    def breakdown_total(self) -> float | None:
+        """Current base load for the breakdown: the last week, else the baseline."""
+        return self.recent_base_load if self.recent_base_load is not None else self.weekly_base_load
 
     @property
     def weekly_base_load(self) -> float | None:
@@ -162,6 +168,16 @@ class BaseLoadData:
         workday = self.baseline.get(DAY_TYPE_WORKDAY)
         weekend = self.baseline.get(DAY_TYPE_WEEKEND)
         return blended(workday.median if workday else None, weekend.median if weekend else None)
+
+
+# Nights that make up the "current" level for the breakdown.
+RECENT_LEVEL_NIGHTS = 7
+
+
+def _recent_level(nights: dict[date, float]) -> float | None:
+    """Median of the last week's night medians: what the load is now."""
+    recent = [nights[night] for night in sorted(nights)[-RECENT_LEVEL_NIGHTS:]]
+    return median(recent) if recent else None
 
 
 def _stats_to_json(stats: dict[str, BaselineStats]) -> dict[str, list[float]]:
@@ -206,6 +222,8 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         self._event_shifts: set[str] = set()
         self._notified_shifts: set[str] = set()
         self._shifts: list[LevelShift] = []
+        self._recent_house: float | None = None
+        self._recent_devices: dict[str, float] = {}
         # Live appliance detection, set up by __init__ when enabled.
         self.appliances: Any = None
         # The explanation of a finished night does not change, so it is cached.
@@ -543,9 +561,12 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
             if night_date(moment, start, end) not in self._away_nights
         }
         shifts: list[LevelShift] = []
+        house_nights = night_medians(valid, start, end)
+        self._recent_house = _recent_level(house_nights)
+        self._recent_devices = {}
         house = detect_shift(
             self.grid_sensor,
-            night_medians(valid, start, end),
+            house_nights,
             today,
             min_delta=self.min_deviation,
             min_score=3.0,
@@ -554,9 +575,12 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         if house is not None:
             shifts.append(house)
         for sensor, series in self._devices.items():
+            device_nights = night_medians(series, start, end, valid)
+            if (level := _recent_level(device_nights)) is not None:
+                self._recent_devices[sensor] = level
             shift = detect_shift(
                 sensor,
-                night_medians(series, start, end, valid),
+                device_nights,
                 today,
                 min_delta=10.0,
                 min_score=3.0,
@@ -795,7 +819,8 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
             currency=price[1] if price else None,
             price_source=price[2] if price else None,
             shifts=list(self._shifts),
-            device_loads=self._weekly_device_loads(),
+            device_loads=dict(self._recent_devices) or self._weekly_device_loads(),
+            recent_base_load=self._recent_house,
         )
 
         expected = result.expected
