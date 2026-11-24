@@ -690,3 +690,39 @@ def test_live_values_are_converted_to_watts(value, unit, watts) -> None:
     attrs = {"unit_of_measurement": unit} if unit else {}
     state = State("sensor.source", value, attrs)
     assert ApplianceDetector._watts(None, "sensor.source", state) == pytest.approx(watts)
+
+
+def test_long_texts_fit_into_a_state() -> None:
+    from custom_components.base_load.describe import fit_state
+
+    assert fit_state("short") == "short"
+    long = ", ".join(f"Steckdose Nummer {i} +12 W" for i in range(30))
+    fitted = fit_state(long)
+    assert len(fitted) == 255
+    assert fitted.endswith("…")
+
+
+async def test_morning_cause_comes_from_the_explanation(hass: HomeAssistant, night) -> None:
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    from custom_components.base_load.morning import async_send_morning
+
+    calls = async_mock_service(hass, "notify", "mobile_app_test")
+    extra = datetime(2026, 11, 3, 0, tzinfo=BERLIN)
+    data = {**ENTRY_DATA, "min_deviation": 30, "notify_service": "notify.mobile_app_test"}
+    entry = await _setup(hass, current_grid=262.0, data=data, extra_since=extra)
+    with (
+        patch(
+            "custom_components.base_load.coordinator.statistics_during_period",
+            side_effect=fake_statistics(262.0, extra_since=extra),
+        ),
+        patch(
+            "custom_components.base_load.coordinator.history.get_significant_states",
+            return_value={},
+        ),
+    ):
+        await async_send_morning(hass, entry)
+    message = calls[0].data["message"]
+    cause = hass.states.get("sensor.base_load_last_night_probable_cause").state
+    assert f"Probable cause: {cause}." in message
+    assert "Nothing unusual" not in message

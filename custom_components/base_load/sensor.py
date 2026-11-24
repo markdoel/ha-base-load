@@ -14,10 +14,8 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.util import dt as dt_util
 
 from .causes import Explanation
 from .const import (
@@ -28,8 +26,8 @@ from .const import (
 )
 from .coordinator import BaseLoadConfigEntry, BaseLoadData
 from .cost import annual_cost
+from .describe import cause_text, describe_cause, entity_name, fit_state, language
 from .entity import BaseLoadEntity
-from .morning import entity_name
 from .nilm import describe_duration
 
 
@@ -195,29 +193,6 @@ class BaseLoadSensor(BaseLoadEntity, SensorEntity):
         return self.entity_description.attrs_fn(self.coordinator.data)
 
 
-_TEXT = {
-    "de": {
-        "none": "Keine Auffälligkeit",
-        "unmeasured": "nicht gemessen",
-        "constant": "dauerhaft",
-        "intermittent": "zeitweise",
-        "since": "ab",
-        "confirmed": "Als normal bestätigt",
-    },
-    "en": {
-        "none": "Nothing unusual",
-        "unmeasured": "unmeasured",
-        "constant": "constant",
-        "intermittent": "intermittent",
-        "since": "since",
-        "confirmed": "Confirmed as normal",
-    },
-}
-# Unexplained rest is mentioned only if it is a real part of the deviation.
-UNEXPLAINED_MIN_W = 30.0
-UNEXPLAINED_MIN_SHARE = 0.25
-
-
 def _watts(value: float) -> str:
     return f"{value:+.0f} W"
 
@@ -234,57 +209,16 @@ class BaseLoadCauseSensor(BaseLoadEntity, SensorEntity):
         data = self.coordinator.data
         return data.last_night_explanation if self._last_night else data.explanation
 
-    def _text(self) -> dict[str, str]:
-        language = (self.hass.config.language or "en").split("-")[0]
-        return _TEXT.get(language, _TEXT["en"])
-
-    def _name_of(self, entity_id: str) -> str:
-        """Device name if the sensor belongs to one, else the entity name.
-
-        Power sensors of plugs are usually called "<device> Power" or worse,
-        the device name ("Heizung") reads much better in a sentence.
-        """
-        entry = er.async_get(self.hass).async_get(entity_id)
-        if entry is not None and entry.device_id is not None:
-            device = dr.async_get(self.hass).async_get(entry.device_id)
-            if device is not None and (name := device.name_by_user or device.name):
-                return name
-        state = self.hass.states.get(entity_id)
-        return state.name if state is not None else entity_id
-
-    @staticmethod
-    def _show_unexplained(explanation: Explanation) -> bool:
-        rest = abs(explanation.unexplained)
-        return rest >= UNEXPLAINED_MIN_W and rest >= UNEXPLAINED_MIN_SHARE * abs(explanation.total)
-
     @property
     def native_value(self) -> str:
-        text = self._text()
         explanation = self._explanation
+        text = cause_text(self.hass)
         if explanation is None:
             return text["none"]
-
-        parts = [
-            f"{self._name_of(cause.entity_id)} {_watts(cause.deviation)}"
-            for cause in explanation.causes
-        ]
-        if explanation.label and (self._show_unexplained(explanation) or not parts):
-            parts.append(f"{explanation.label} {_watts(explanation.unexplained)}")
-        elif self._show_unexplained(explanation) or not parts:
-            rest = f"{text['unmeasured']} {_watts(explanation.unexplained)}"
-            pattern = explanation.pattern
-            if pattern is not None and pattern.shape is not None:
-                detail = text[pattern.shape]
-                if pattern.onset is not None:
-                    onset = dt_util.as_local(pattern.onset).strftime("%H:%M")
-                    detail = f"{detail} {text['since']} {onset}"
-                rest = f"{rest} ({detail})"
-            parts.append(rest)
-        value = ", ".join(parts)
-        value = value[0].upper() + value[1:]
+        value = describe_cause(self.hass, explanation)
         if self._last_night and self.coordinator.data.last_night_marked_normal:
             value = f"{text['confirmed']}: {value}"
-        return value
+        return fit_state(value)
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any]:
@@ -301,7 +235,7 @@ class BaseLoadCauseSensor(BaseLoadEntity, SensorEntity):
             "causes": [
                 {
                     "entity_id": cause.entity_id,
-                    "name": self._name_of(cause.entity_id),
+                    "name": entity_name(self.hass, cause.entity_id),
                     "deviation": round(cause.deviation),
                     "usual": round(cause.baseline),
                     "measured": round(cause.current),
@@ -420,21 +354,20 @@ class BaseLoadShiftSensor(BaseLoadEntity, SensorEntity):
 
     def _name(self, entity_id: str) -> str:
         if entity_id == self.coordinator.grid_sensor:
-            language = (self.hass.config.language or "en").split("-")[0]
-            return "Haus gesamt" if language == "de" else "Whole house"
+            return "Haus gesamt" if language(self.hass) == "de" else "Whole house"
         return entity_name(self.hass, entity_id)
 
     @property
     def native_value(self) -> str:
         shifts = self.coordinator.data.shifts
         if not shifts:
-            language = (self.hass.config.language or "en").split("-")[0]
-            return _TEXT.get(language, _TEXT["en"])["none"]
-        language = (self.hass.config.language or "en").split("-")[0]
-        since = "seit" if language == "de" else "since"
-        return ", ".join(
-            f"{self._name(s.entity_id)} {_watts(s.delta)} {since} {s.since.strftime('%d.%m.')}"
-            for s in shifts
+            return cause_text(self.hass)["none"]
+        since = "seit" if language(self.hass) == "de" else "since"
+        return fit_state(
+            ", ".join(
+                f"{self._name(s.entity_id)} {_watts(s.delta)} {since} {s.since.strftime('%d.%m.')}"
+                for s in shifts
+            )
         )
 
     @property

@@ -710,7 +710,7 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
 
     # Causes -------------------------------------------------------------
 
-    def _notable(self, evaluation: Evaluation) -> bool:
+    def notable(self, evaluation: Evaluation) -> bool:
         """Explain anomalies and also clear deviations just below the score."""
         return evaluation.is_anomaly or abs(evaluation.deviation) >= self.min_deviation
 
@@ -900,7 +900,7 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
             and not away_now
         ):
             result.evaluation = evaluate(current, expected, self.sensitivity, self.min_deviation)
-            if self._notable(result.evaluation) and result.day_type is not None:
+            if self.notable(result.evaluation) and result.day_type is not None:
                 device_values = {
                     sensor: value
                     for sensor in self.candidate_sensors
@@ -933,7 +933,7 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
             result.last_night_evaluation = evaluate(
                 last.load, last_stats, self.sensitivity, self.min_deviation
             )
-            if self._notable(result.last_night_evaluation):
+            if self.notable(result.last_night_evaluation):
                 result.last_night_explanation = await self._explain_last_night(
                     last.night, result.last_night_evaluation, last_stats
                 )

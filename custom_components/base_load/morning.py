@@ -7,7 +7,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.event import async_track_time_change
 
 from .const import (
@@ -18,6 +17,7 @@ from .const import (
     DEFAULT_NOTIFY_TIME,
 )
 from .cost import annual_cost
+from .describe import describe_cause, entity_name, language
 
 if TYPE_CHECKING:
     from .coordinator import BaseLoadConfigEntry, BaseLoadCoordinator, BaseLoadData
@@ -58,19 +58,7 @@ TEXT = {
 
 
 def texts(hass: HomeAssistant) -> dict[str, str]:
-    language = (hass.config.language or "en").split("-")[0]
-    return TEXT.get(language, TEXT["en"])
-
-
-def entity_name(hass: HomeAssistant, entity_id: str) -> str:
-    """Device name if the entity belongs to one, else its name."""
-    entry = er.async_get(hass).async_get(entity_id)
-    if entry is not None and entry.device_id is not None:
-        device = dr.async_get(hass).async_get(entry.device_id)
-        if device is not None and (name := device.name_by_user or device.name):
-            return name
-    state = hass.states.get(entity_id)
-    return state.name if state is not None else entity_id
+    return TEXT.get(language(hass), TEXT["en"])
 
 
 def _money(value: float, currency: str | None) -> str:
@@ -99,7 +87,7 @@ def build_message(
         evaluation is not None
         and data.last_night_date is not None
         and not data.last_night_marked_normal
-        and (evaluation.is_anomaly or abs(evaluation.deviation) >= coordinator.min_deviation)
+        and coordinator.notable(evaluation)
     ):
         stats = data.last_night_expected
         delta = f"{evaluation.deviation:+.0f} W"
@@ -159,8 +147,8 @@ async def async_send_morning(hass: HomeAssistant, entry: BaseLoadConfigEntry) ->
     if data is None:
         return
 
-    cause_state = hass.states.get(_cause_entity(hass, entry))
-    cause = cause_state.state if cause_state else None
+    explanation = data.last_night_explanation
+    cause = describe_cause(hass, explanation) if explanation is not None else None
     shifts = coordinator.unnotified_shifts()
     built = build_message(hass, coordinator, data, cause, shifts)
     if built is None:
@@ -188,14 +176,6 @@ async def async_send_morning(hass: HomeAssistant, entry: BaseLoadConfigEntry) ->
     # Blocking, so a failed notification leaves the shifts for the next morning.
     await hass.services.async_call(domain, name, payload, blocking=True)
     coordinator.mark_notified(shifts)
-
-
-def _cause_entity(hass: HomeAssistant, entry: BaseLoadConfigEntry) -> str:
-    registry = er.async_get(hass)
-    entity_id = registry.async_get_entity_id(
-        "sensor", "base_load", f"{entry.entry_id}_last_night_cause"
-    )
-    return entity_id or ""
 
 
 def parse_time(value: str | None) -> time:
