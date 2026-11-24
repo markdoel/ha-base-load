@@ -44,7 +44,8 @@
     "error": {
       "duplicate_sensor": "Ein Sensor ist mehrfach ausgewählt.",
       "empty_window": "Beginn und Ende des Nachtfensters müssen sich unterscheiden.",
-      "unknown_notify_service": "Unbekannter Benachrichtigungsdienst. Bitte den vollen Namen angeben, z. B. notify.mobile_app_pixel."
+      "unknown_notify_service": "Unbekannter Benachrichtigungsdienst. Bitte den vollen Namen angeben, z. B. notify.mobile_app_pixel.",
+      "notify_in_night": "Die Benachrichtigung muss mindestens 15 Minuten nach dem Ende des Nachtfensters kommen, sonst meldet sie die Nacht davor."
     },
     "abort": {
       "already_configured": "Diese Netzleistung wird bereits überwacht."
@@ -87,7 +88,8 @@
     "error": {
       "duplicate_sensor": "Ein Sensor ist mehrfach ausgewählt.",
       "empty_window": "Beginn und Ende des Nachtfensters müssen sich unterscheiden.",
-      "unknown_notify_service": "Unbekannter Benachrichtigungsdienst. Bitte den vollen Namen angeben, z. B. notify.mobile_app_pixel."
+      "unknown_notify_service": "Unbekannter Benachrichtigungsdienst. Bitte den vollen Namen angeben, z. B. notify.mobile_app_pixel.",
+      "notify_in_night": "Die Benachrichtigung muss mindestens 15 Minuten nach dem Ende des Nachtfensters kommen, sonst meldet sie die Nacht davor."
     }
   },
   "entity": {

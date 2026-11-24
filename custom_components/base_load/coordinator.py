@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime, timedelta
+from functools import partial
 import logging
 import math
 from statistics import fmean, median
@@ -98,6 +99,8 @@ type SeriesById = dict[str, MeteredSeries]
 # Short-term (5-minute) statistics and state history are kept about 10 days by
 # default, so presence can only be read back that far.
 PRESENCE_HISTORY = timedelta(days=10)
+# Reported level shifts are remembered this long (well beyond MAX_SHIFT_AGE_DAYS).
+SHIFT_KEY_RETENTION = timedelta(days=60)
 
 
 @dataclass(slots=True)
@@ -190,6 +193,19 @@ def _recent_level(nights: dict[date, float]) -> float | None:
     """Median of the last week's night medians: what the load is now."""
     recent = [nights[night] for night in sorted(nights)[-RECENT_LEVEL_NIGHTS:]]
     return median(recent) if recent else None
+
+
+def _recent_keys(keys: set[str], oldest: date) -> set[str]:
+    """Shift keys ("<entity>|<since>") whose start date is not older than oldest."""
+    kept = set()
+    for key in keys:
+        try:
+            since = date.fromisoformat(key.rsplit("|", 1)[1])
+        except (IndexError, ValueError):
+            continue
+        if since >= oldest:
+            kept.add(key)
+    return kept
 
 
 def _stats_to_json(stats: dict[str, BaselineStats]) -> dict[str, list[float]]:
@@ -383,6 +399,11 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         weeks = int(self.opt(CONF_LOOKBACK_WEEKS, DEFAULT_LOOKBACK_WEEKS))
         oldest = dt_util.now().date() - timedelta(weeks=weeks)
         self._away_nights = {d for d in self._away_nights if d >= oldest}
+        # Shift keys end in their start date. A shift is dated at most a few
+        # weeks back, so keys older than the retention can never come back.
+        shift_oldest = dt_util.now().date() - SHIFT_KEY_RETENTION
+        self._event_shifts = _recent_keys(self._event_shifts, shift_oldest)
+        self._notified_shifts = _recent_keys(self._notified_shifts, shift_oldest)
         payload = {
             "baseline": _stats_to_json(self._baseline),
             "device_baselines": {
@@ -459,14 +480,15 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
             return
         start = now - PRESENCE_HISTORY
         states = await get_instance(self.hass).async_add_executor_job(
-            history.get_significant_states,
-            self.hass,
-            start,
-            now,
-            [entity_id],
-            None,
-            True,  # include the state active at the start
-            False,  # all changes, not only significant ones
+            partial(
+                history.get_significant_states,
+                self.hass,
+                start,
+                end_time=now,
+                entity_ids=[entity_id],
+                include_start_time_state=True,
+                significant_changes_only=False,
+            )
         )
         timeline = [
             (state.last_changed, state.state)
@@ -642,12 +664,14 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
                 )
 
     def unnotified_shifts(self) -> list[LevelShift]:
-        """Current shifts not yet sent in a notification; marks them as sent."""
-        fresh = [s for s in self._shifts if s.key not in self._notified_shifts]
-        self._notified_shifts |= {s.key for s in fresh}
-        if fresh:
+        """Current shifts not yet sent in a notification."""
+        return [s for s in self._shifts if s.key not in self._notified_shifts]
+
+    def mark_notified(self, shifts: list[LevelShift]) -> None:
+        """Remember shifts once their notification went out."""
+        if shifts:
+            self._notified_shifts |= {s.key for s in shifts}
             self._save()
-        return fresh
 
     # Feedback -----------------------------------------------------------
 

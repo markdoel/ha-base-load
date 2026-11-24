@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFl
 from homeassistant.const import CONF_NAME, UnitOfPower
 from homeassistant.core import callback
 from homeassistant.helpers import selector
+from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
 from .const import (
@@ -42,6 +43,21 @@ from .const import (
     DOMAIN,
     PRESENCE_DOMAINS,
 )
+
+# The last hour of the night needs a few minutes until its statistics exist.
+NOTIFY_MARGIN_MINUTES = 15
+
+
+def notify_too_early(notify_time: str, night_start: int, night_end: int) -> bool:
+    """The morning notification would run before the night is fully recorded."""
+    parsed = dt_util.parse_time(notify_time or "")
+    if parsed is None or night_start == night_end:
+        return False
+    minutes = parsed.hour * 60 + parsed.minute
+    start, end = night_start * 60, night_end * 60
+    in_window = (minutes - start) % 1440 < (end - start) % 1440
+    return in_window or (minutes - end) % 1440 < NOTIFY_MARGIN_MINUTES
+
 
 _POWER_SENSOR = selector.EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.POWER)
 _HOUR = selector.NumberSelector(
@@ -189,6 +205,12 @@ def _validate(user_input: dict[str, Any], hass=None) -> dict[str, str]:
         or (hass and not hass.services.has_service("notify", service.split(".", 1)[1]))
     ):
         errors[CONF_NOTIFY_SERVICE] = "unknown_notify_service"
+    if service and notify_too_early(
+        user_input.get(CONF_NOTIFY_TIME, DEFAULT_NOTIFY_TIME),
+        int(user_input[CONF_NIGHT_START]),
+        int(user_input[CONF_NIGHT_END]),
+    ):
+        errors[CONF_NOTIFY_TIME] = "notify_in_night"
     return errors
 
 

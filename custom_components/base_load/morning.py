@@ -21,6 +21,7 @@ from .cost import annual_cost
 
 if TYPE_CHECKING:
     from .coordinator import BaseLoadConfigEntry, BaseLoadCoordinator, BaseLoadData
+    from .shifts import LevelShift
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -81,7 +82,11 @@ def _date(day: date) -> str:
 
 
 def build_message(
-    hass: HomeAssistant, coordinator: BaseLoadCoordinator, data: BaseLoadData, cause: str | None
+    hass: HomeAssistant,
+    coordinator: BaseLoadCoordinator,
+    data: BaseLoadData,
+    cause: str | None,
+    shifts: list[LevelShift],
 ) -> tuple[str, str, bool] | None:
     """Title, message and whether the night can be given feedback. None: nothing to say."""
     text = texts(hass)
@@ -114,7 +119,6 @@ def build_message(
             lines.append(text["cost"].format(cost=_money(cost, data.currency)))
         feedback = True
 
-    shifts = coordinator.unnotified_shifts()
     for shift in shifts:
         name = (
             text["house"]
@@ -157,7 +161,8 @@ async def async_send_morning(hass: HomeAssistant, entry: BaseLoadConfigEntry) ->
 
     cause_state = hass.states.get(_cause_entity(hass, entry))
     cause = cause_state.state if cause_state else None
-    built = build_message(hass, coordinator, data, cause)
+    shifts = coordinator.unnotified_shifts()
+    built = build_message(hass, coordinator, data, cause, shifts)
     if built is None:
         return
     title, message, feedback = built
@@ -180,7 +185,9 @@ async def async_send_morning(hass: HomeAssistant, entry: BaseLoadConfigEntry) ->
             ],
         }
     domain, name = service.split(".", 1)
-    await hass.services.async_call(domain, name, payload, blocking=False)
+    # Blocking, so a failed notification leaves the shifts for the next morning.
+    await hass.services.async_call(domain, name, payload, blocking=True)
+    coordinator.mark_notified(shifts)
 
 
 def _cause_entity(hass: HomeAssistant, entry: BaseLoadConfigEntry) -> str:

@@ -44,7 +44,8 @@
     "error": {
       "duplicate_sensor": "A sensor is selected more than once.",
       "empty_window": "Start and end of the night window must differ.",
-      "unknown_notify_service": "Unknown notify service. Use the full name, e.g. notify.mobile_app_pixel."
+      "unknown_notify_service": "Unknown notify service. Use the full name, e.g. notify.mobile_app_pixel.",
+      "notify_in_night": "The notification must come at least 15 minutes after the end of the night window, otherwise it reports the night before."
     },
     "abort": {
       "already_configured": "This grid sensor is already monitored."
@@ -87,7 +88,8 @@
     "error": {
       "duplicate_sensor": "A sensor is selected more than once.",
       "empty_window": "Start and end of the night window must differ.",
-      "unknown_notify_service": "Unknown notify service. Use the full name, e.g. notify.mobile_app_pixel."
+      "unknown_notify_service": "Unknown notify service. Use the full name, e.g. notify.mobile_app_pixel.",
+      "notify_in_night": "The notification must come at least 15 minutes after the end of the night window, otherwise it reports the night before."
     }
   },
   "entity": {
