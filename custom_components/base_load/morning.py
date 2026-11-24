@@ -96,7 +96,7 @@ def build_message(
         and not data.last_night_marked_normal
         and (evaluation.is_anomaly or abs(evaluation.deviation) >= coordinator.min_deviation)
     ):
-        stats = data.baseline.get("weekend" if data.last_night_date.weekday() >= 5 else "workday")
+        stats = data.last_night_expected
         delta = f"{evaluation.deviation:+.0f} W"
         title = text["title_night"].format(delta=delta)
         lines.append(

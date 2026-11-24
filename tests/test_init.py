@@ -199,6 +199,11 @@ async def test_last_night_verdict(hass: HomeAssistant, night) -> None:
     assert last.state == "off"
     assert str(last.attributes["date"]) == "2026-11-03"
 
+    # Completed nights are judged against the baseline of night medians.
+    load = hass.states.get("sensor.base_load_last_night_base_load")
+    assert load.attributes["baseline_nights"] >= 6
+    assert 300 <= load.attributes["expected"] <= 320
+
 
 async def test_config_flow(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(

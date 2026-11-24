@@ -8,12 +8,14 @@ visible, with the date they started.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from statistics import median
 
-from .baseline import MAD_TO_SIGMA, in_night_window, night_date, robust_stats
+from .baseline import MAD_TO_SIGMA, night_medians, robust_stats
+
+__all__ = ["LevelShift", "detect_shift", "night_medians"]
 
 # Nights that must all sit on the new level.
 RECENT_NIGHTS = 3
@@ -38,23 +40,6 @@ class LevelShift:
     def key(self) -> str:
         """Stable identity, used to report each shift only once."""
         return f"{self.entity_id}|{self.since.isoformat()}"
-
-
-def night_medians(
-    series: Mapping[datetime, float],
-    start: int,
-    end: int,
-    valid: Iterable[datetime] | None = None,
-) -> dict[date, float]:
-    """Median of the night hours per night, optionally only on valid hours."""
-    allowed = set(valid) if valid is not None else None
-    nights: dict[date, list[float]] = {}
-    for moment, value in series.items():
-        if allowed is not None and moment not in allowed:
-            continue
-        if in_night_window(moment.hour, start, end):
-            nights.setdefault(night_date(moment, start, end), []).append(value)
-    return {night: median(values) for night, values in nights.items()}
 
 
 def detect_shift(

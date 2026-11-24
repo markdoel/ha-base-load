@@ -62,8 +62,12 @@ def _deviation_attrs(data: BaseLoadData) -> dict[str, Any]:
 
 def _last_night_attrs(data: BaseLoadData) -> dict[str, Any]:
     evaluation = data.last_night_evaluation
+    expected = data.last_night_expected
     return {
         "date": data.last_night_date,
+        "expected": _round(expected.median if expected else None),
+        "spread": _round(expected.sigma if expected else None),
+        "baseline_nights": expected.count if expected else 0,
         "deviation": _round(evaluation.deviation if evaluation else None),
         "score": _round(evaluation.score if evaluation else None, 2),
         "direction": evaluation.direction if evaluation else None,

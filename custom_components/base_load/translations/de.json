@@ -154,6 +154,15 @@
           "date": {
             "name": "Datum"
           },
+          "expected": {
+            "name": "Übliche Nacht"
+          },
+          "spread": {
+            "name": "Streuung"
+          },
+          "baseline_nights": {
+            "name": "Gelernte Nächte"
+          },
           "deviation": {
             "name": "Abweichung"
           },

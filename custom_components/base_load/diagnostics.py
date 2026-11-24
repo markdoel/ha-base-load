@@ -24,6 +24,7 @@ async def async_get_config_entry_diagnostics(
         "options": dict(entry.options),
         "last_update_success": coordinator.last_update_success,
         "baseline": {key: asdict(stats) for key, stats in data.baseline.items()},
+        "night_baseline": {key: asdict(stats) for key, stats in data.night_baseline.items()},
         "baseline_updated": data.baseline_updated,
         "current_load": data.current_load,
         "excluded_active": data.excluded_active,

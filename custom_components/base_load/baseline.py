@@ -256,6 +256,58 @@ def build_baseline(
     return baseline
 
 
+def night_medians(
+    series: Series,
+    start: int,
+    end: int,
+    valid: Iterable[datetime] | None = None,
+    min_hours: int = 1,
+) -> dict[date, float]:
+    """Median of the night hours per night.
+
+    valid: only these periods count. min_hours: nights with fewer valid hours
+    are left out, a median of one or two hours says little about a night.
+    """
+    allowed = set(valid) if valid is not None else None
+    nights: dict[date, list[float]] = {}
+    for moment, value in series.items():
+        if allowed is not None and moment not in allowed:
+            continue
+        if in_night_window(moment.hour, start, end):
+            nights.setdefault(night_date(moment, start, end), []).append(value)
+    return {night: median(values) for night, values in nights.items() if len(values) >= min_hours}
+
+
+def build_night_baseline(
+    nights: Mapping[date, float],
+    today: date | None = None,
+    half_life_days: float = 0.0,
+) -> dict[str, BaselineStats]:
+    """Baseline per day type from night medians, count is the number of nights.
+
+    A completed night is judged by the median of its hours. Night medians
+    spread far less than single hours, so comparing one with the spread of
+    single hours would make the verdict too lenient.
+    """
+    buckets: dict[str, list[tuple[float, float]]] = {
+        DAY_TYPE_WORKDAY: [],
+        DAY_TYPE_WEEKEND: [],
+    }
+    for night, value in nights.items():
+        if today is None or half_life_days <= 0:
+            weight = 1.0
+        else:
+            weight = 0.5 ** (max((today - night).days, 0) / half_life_days)
+        buckets[day_type_of(night)].append((value, weight))
+
+    baseline: dict[str, BaselineStats] = {}
+    for key, pairs in buckets.items():
+        stats = robust_stats([v for v, _ in pairs], [w for _, w in pairs])
+        if stats is not None:
+            baseline[key] = stats
+    return baseline
+
+
 @dataclass(frozen=True, slots=True)
 class NightLoad:
     """Load of one completed night."""
