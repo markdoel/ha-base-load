@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime, timedelta
+from functools import partial
 import logging
 import math
 from statistics import fmean, median
@@ -24,6 +25,7 @@ from .baseline import (
     Evaluation,
     MeteredSeries,
     build_baseline,
+    build_night_baseline,
     combine_house_load,
     coverage,
     day_type,
@@ -32,6 +34,7 @@ from .baseline import (
     in_night_window,
     last_night_load,
     night_date,
+    night_medians,
     window_hours,
 )
 from .causes import (
@@ -76,6 +79,7 @@ from .const import (
     ISSUE_SENSOR_MISSING,
     MAX_FAILED_UPDATES,
     MIN_BASELINE_HOURS,
+    MIN_BASELINE_NIGHTS,
     MIN_DATA_QUALITY,
     MIN_NIGHT_COVERAGE,
     ONSET_LOOKBACK,
@@ -85,7 +89,7 @@ from .const import (
 )
 from .cost import blended, price_unit
 from .presence import away_nights, is_away
-from .shifts import LevelShift, detect_shift, night_medians
+from .shifts import LevelShift, detect_shift
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,6 +99,8 @@ type SeriesById = dict[str, MeteredSeries]
 # Short-term (5-minute) statistics and state history are kept about 10 days by
 # default, so presence can only be read back that far.
 PRESENCE_HISTORY = timedelta(days=10)
+# Reported level shifts are remembered this long (well beyond MAX_SHIFT_AGE_DAYS).
+SHIFT_KEY_RETENTION = timedelta(days=60)
 
 
 @dataclass(slots=True)
@@ -102,6 +108,8 @@ class BaseLoadData:
     """Result of one update."""
 
     baseline: dict[str, BaselineStats] = field(default_factory=dict)
+    # Baseline of night medians, used to judge completed nights.
+    night_baseline: dict[str, BaselineStats] = field(default_factory=dict)
     baseline_updated: datetime | None = None
     current_load: float | None = None
     excluded_active: bool = False
@@ -134,6 +142,13 @@ class BaseLoadData:
         if self.day_type is None:
             return None
         return self.baseline.get(self.day_type)
+
+    @property
+    def last_night_expected(self) -> BaselineStats | None:
+        """Night baseline for the day type of the last completed night."""
+        if self.last_night_date is None:
+            return None
+        return self.night_baseline.get(day_type_of(self.last_night_date))
 
     @property
     def last_night_insufficient(self) -> bool:
@@ -180,6 +195,19 @@ def _recent_level(nights: dict[date, float]) -> float | None:
     return median(recent) if recent else None
 
 
+def _recent_keys(keys: set[str], oldest: date) -> set[str]:
+    """Shift keys ("<entity>|<since>") whose start date is not older than oldest."""
+    kept = set()
+    for key in keys:
+        try:
+            since = date.fromisoformat(key.rsplit("|", 1)[1])
+        except (IndexError, ValueError):
+            continue
+        if since >= oldest:
+            kept.add(key)
+    return kept
+
+
 def _stats_to_json(stats: dict[str, BaselineStats]) -> dict[str, list[float]]:
     return {kind: [s.median, s.mad, s.count] for kind, s in stats.items()}
 
@@ -212,6 +240,8 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         self._devices: dict[str, dict[datetime, float]] = {}
         self._baseline: dict[str, BaselineStats] = {}
         self._device_baselines: dict[str, dict[str, BaselineStats]] = {}
+        self._night_baseline: dict[str, BaselineStats] = {}
+        self._device_night_baselines: dict[str, dict[str, BaselineStats]] = {}
         self._baseline_updated: datetime | None = None
         self._away_nights: set[date] = set()
         self._data_quality: float | None = None
@@ -349,6 +379,11 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
                 sensor: _stats_from_json(raw)
                 for sensor, raw in stored.get("device_baselines", {}).items()
             }
+            self._night_baseline = _stats_from_json(stored.get("night_baseline", {}))
+            self._device_night_baselines = {
+                sensor: _stats_from_json(raw)
+                for sensor, raw in stored.get("device_night_baselines", {}).items()
+            }
             # The restored baseline bridges outages; the first successful
             # update always recomputes it (baseline_updated stays None).
             _LOGGER.debug("Restored baseline from %s", stored.get("baseline_updated"))
@@ -364,10 +399,20 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         weeks = int(self.opt(CONF_LOOKBACK_WEEKS, DEFAULT_LOOKBACK_WEEKS))
         oldest = dt_util.now().date() - timedelta(weeks=weeks)
         self._away_nights = {d for d in self._away_nights if d >= oldest}
+        # Shift keys end in their start date. A shift is dated at most a few
+        # weeks back, so keys older than the retention can never come back.
+        shift_oldest = dt_util.now().date() - SHIFT_KEY_RETENTION
+        self._event_shifts = _recent_keys(self._event_shifts, shift_oldest)
+        self._notified_shifts = _recent_keys(self._notified_shifts, shift_oldest)
         payload = {
             "baseline": _stats_to_json(self._baseline),
             "device_baselines": {
                 sensor: _stats_to_json(stats) for sensor, stats in self._device_baselines.items()
+            },
+            "night_baseline": _stats_to_json(self._night_baseline),
+            "device_night_baselines": {
+                sensor: _stats_to_json(stats)
+                for sensor, stats in self._device_night_baselines.items()
             },
             "baseline_updated": (
                 self._baseline_updated.isoformat() if self._baseline_updated else None
@@ -435,14 +480,15 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
             return
         start = now - PRESENCE_HISTORY
         states = await get_instance(self.hass).async_add_executor_job(
-            history.get_significant_states,
-            self.hass,
-            start,
-            now,
-            [entity_id],
-            None,
-            True,  # include the state active at the start
-            False,  # all changes, not only significant ones
+            partial(
+                history.get_significant_states,
+                self.hass,
+                start,
+                end_time=now,
+                entity_ids=[entity_id],
+                include_start_time_state=True,
+                significant_changes_only=False,
+            )
         )
         timeline = [
             (state.last_changed, state.state)
@@ -538,6 +584,18 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
             )
             for sensor, series in self._devices.items()
         }
+        # Completed nights are judged by their median, so they are compared
+        # with the spread of night medians, not of single hours.
+        min_hours = math.ceil(window_hours(start, end) * MIN_NIGHT_COVERAGE)
+        self._night_baseline = build_night_baseline(
+            night_medians(history_load, start, end, min_hours=min_hours), today, half_life
+        )
+        self._device_night_baselines = {
+            sensor: build_night_baseline(
+                night_medians(series, start, end, history_load, min_hours), today, half_life
+            )
+            for sensor, series in self._devices.items()
+        }
         first_night = (now - timedelta(weeks=weeks)).date() + timedelta(days=1)
         nights = [
             first_night + timedelta(days=offset)
@@ -606,12 +664,14 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
                 )
 
     def unnotified_shifts(self) -> list[LevelShift]:
-        """Current shifts not yet sent in a notification; marks them as sent."""
-        fresh = [s for s in self._shifts if s.key not in self._notified_shifts]
-        self._notified_shifts |= {s.key for s in fresh}
-        if fresh:
+        """Current shifts not yet sent in a notification."""
+        return [s for s in self._shifts if s.key not in self._notified_shifts]
+
+    def mark_notified(self, shifts: list[LevelShift]) -> None:
+        """Remember shifts once their notification went out."""
+        if shifts:
+            self._notified_shifts |= {s.key for s in shifts}
             self._save()
-        return fresh
 
     # Feedback -----------------------------------------------------------
 
@@ -650,14 +710,13 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
 
     # Causes -------------------------------------------------------------
 
-    def _notable(self, evaluation: Evaluation) -> bool:
+    def notable(self, evaluation: Evaluation) -> bool:
         """Explain anomalies and also clear deviations just below the score."""
         return evaluation.is_anomaly or abs(evaluation.deviation) >= self.min_deviation
 
-    def _device_baselines_for(self, kind: str) -> dict[str, BaselineStats]:
-        return {
-            sensor: stats[kind] for sensor, stats in self._device_baselines.items() if kind in stats
-        }
+    def _device_baselines_for(self, kind: str, nightly: bool = False) -> dict[str, BaselineStats]:
+        source = self._device_night_baselines if nightly else self._device_baselines
+        return {sensor: stats[kind] for sensor, stats in source.items() if kind in stats}
 
     def _explain(
         self,
@@ -667,9 +726,10 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         device_values: dict[str, float],
         five_minute: SeriesById,
         window: tuple[datetime, datetime],
+        nightly: bool = False,
     ) -> Explanation:
         """Rank measured devices, then describe what is left over."""
-        baselines = self._device_baselines_for(kind)
+        baselines = self._device_baselines_for(kind, nightly)
         causes = rank_causes(evaluation.deviation, device_values, baselines)
         residual = residual_series(
             self._house_load_from(five_minute),
@@ -710,7 +770,13 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         }
         five_minute = await self._fetch(window[0] - ONSET_LOOKBACK, window[1], "5minute")
         explanation = self._explain(
-            evaluation, stats.median, day_type_of(night), device_values, five_minute, window
+            evaluation,
+            stats.median,
+            day_type_of(night),
+            device_values,
+            five_minute,
+            window,
+            nightly=True,
         )
         self._last_night_cache = (night, explanation)
         return explanation
@@ -736,6 +802,7 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
                 _LOGGER.warning("Update failed, using the stored baseline: %s", err)
                 return BaseLoadData(
                     baseline=self._baseline,
+                    night_baseline=self._night_baseline,
                     window_hours=window_hours(self.night_start, self.night_end),
                     stale=True,
                     failed_updates=self._failed_updates,
@@ -807,6 +874,7 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         price = self._price
         result = BaseLoadData(
             baseline=self._baseline,
+            night_baseline=self._night_baseline,
             baseline_updated=self._baseline_updated,
             current_load=current,
             excluded_active=excluded_active,
@@ -832,7 +900,7 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
             and not away_now
         ):
             result.evaluation = evaluate(current, expected, self.sensitivity, self.min_deviation)
-            if self._notable(result.evaluation) and result.day_type is not None:
+            if self.notable(result.evaluation) and result.day_type is not None:
                 device_values = {
                     sensor: value
                     for sensor in self.candidate_sensors
@@ -854,18 +922,18 @@ class BaseLoadCoordinator(DataUpdateCoordinator[BaseLoadData]):
         result.last_night_hours = last.hours
         result.last_night_away = last.night in self._away_nights
         result.last_night_marked_normal = last.night in self._normal_nights
-        last_stats = self._baseline.get(day_type_of(last.night))
+        last_stats = result.last_night_expected
         if (
             last.load is not None
             and not result.last_night_insufficient
             and not result.last_night_away
             and last_stats is not None
-            and last_stats.count >= MIN_BASELINE_HOURS
+            and last_stats.count >= MIN_BASELINE_NIGHTS
         ):
             result.last_night_evaluation = evaluate(
                 last.load, last_stats, self.sensitivity, self.min_deviation
             )
-            if self._notable(result.last_night_evaluation):
+            if self.notable(result.last_night_evaluation):
                 result.last_night_explanation = await self._explain_last_night(
                     last.night, result.last_night_evaluation, last_stats
                 )

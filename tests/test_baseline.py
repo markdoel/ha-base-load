@@ -11,6 +11,7 @@ from custom_components.base_load.baseline import (
     NightLoad,
     age_weight,
     build_baseline,
+    build_night_baseline,
     combine_house_load,
     coverage,
     day_type,
@@ -18,6 +19,7 @@ from custom_components.base_load.baseline import (
     in_night_window,
     last_night_load,
     night_date,
+    night_medians,
     robust_stats,
     weighted_median,
     window_hours,
@@ -243,3 +245,45 @@ def test_window_hours_and_coverage():
     nights = [date(2026, 11, 7), date(2026, 11, 8)]
     assert coverage(load, nights, 1, 5) == 5 / 8
     assert coverage(load, [], 1, 5) is None
+
+
+def test_night_medians_drops_thin_nights():
+    series = {at(3, 1): 300.0, at(3, 2): 310.0, at(3, 3): 320.0, at(4, 1): 900.0}
+    assert night_medians(series, 1, 5, min_hours=2) == {date(2026, 11, 3): 310.0}
+    assert night_medians(series, 1, 5)[date(2026, 11, 4)] == 900.0
+
+
+def test_night_baseline_counts_nights_per_day_type():
+    nights = {date(2026, 11, day): 300.0 + day for day in range(2, 15)}
+    baseline = build_night_baseline(nights)
+    # 2nd to 14th: Saturdays/Sundays 7, 8, 14 are weekend mornings.
+    assert baseline["weekend"].count == 3
+    assert baseline["workday"].count == 10
+
+
+def test_night_baseline_weights_recent_nights():
+    nights = {date(2026, 10, day): 300.0 for day in range(5, 10)}
+    nights |= {date(2026, 11, day): 500.0 for day in range(2, 5)}
+    plain = build_night_baseline(nights)
+    weighted = build_night_baseline(nights, date(2026, 11, 5), half_life_days=7)
+    assert plain["workday"].median == 300.0
+    assert weighted["workday"].median == 500.0
+
+
+def test_completed_night_judged_against_night_spread():
+    """Hours swing 200/400 W, but every night has the same 300 W median.
+
+    Against the spread of single hours a night at 380 W looks harmless, against
+    the spread of night medians it clearly stands out.
+    """
+    house = {}
+    for day in range(2, 28):
+        for hour, value in zip(range(1, 5), (200.0, 400.0, 200.0, 400.0), strict=True):
+            house[at(day, hour)] = value
+    hourly = build_baseline(house, 1, 5)["workday"]
+    nightly = build_night_baseline(night_medians(house, 1, 5, min_hours=2))["workday"]
+
+    assert hourly.sigma > 100
+    assert nightly.sigma == MIN_SIGMA_W
+    assert not evaluate(380.0, hourly, 3.0, 60.0).is_anomaly
+    assert evaluate(380.0, nightly, 3.0, 60.0).is_anomaly

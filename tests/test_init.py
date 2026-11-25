@@ -199,6 +199,11 @@ async def test_last_night_verdict(hass: HomeAssistant, night) -> None:
     assert last.state == "off"
     assert str(last.attributes["date"]) == "2026-11-03"
 
+    # Completed nights are judged against the baseline of night medians.
+    load = hass.states.get("sensor.base_load_last_night_base_load")
+    assert load.attributes["baseline_nights"] >= 6
+    assert 300 <= load.attributes["expected"] <= 320
+
 
 async def test_config_flow(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
@@ -603,3 +608,121 @@ async def test_name_and_forget_services(hass: HomeAssistant, night, freezer) -> 
     await hass.async_block_till_done()
     assert detector.catalog.clusters == []
     assert hass.states.get("sensor.base_load_oven_energy") is None
+
+
+async def test_failed_notification_keeps_shifts_for_next_morning(
+    hass: HomeAssistant, night
+) -> None:
+    from homeassistant.exceptions import HomeAssistantError
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    from custom_components.base_load.morning import async_send_morning
+
+    since = datetime(2026, 10, 30, 12, tzinfo=BERLIN)
+
+    def _broken(call):
+        raise HomeAssistantError("phone unreachable")
+
+    hass.services.async_register("notify", "mobile_app_test", _broken)
+    data = {**ENTRY_DATA, "notify_service": "notify.mobile_app_test"}
+    entry = await _setup(hass, current_grid=332.0, heater_now=90.0, heater_since=since, data=data)
+    coordinator = entry.runtime_data
+    assert coordinator.unnotified_shifts()
+
+    stats = patch(
+        "custom_components.base_load.coordinator.statistics_during_period",
+        side_effect=fake_statistics(332.0, heater_now=90.0, heater_since=since),
+    )
+    history = patch(
+        "custom_components.base_load.coordinator.history.get_significant_states",
+        return_value={},
+    )
+    with stats, history, pytest.raises(HomeAssistantError):
+        await async_send_morning(hass, entry)
+    assert coordinator.unnotified_shifts()
+
+    hass.services.async_remove("notify", "mobile_app_test")
+    calls = async_mock_service(hass, "notify", "mobile_app_test")
+    with stats, history:
+        await async_send_morning(hass, entry)
+    assert len(calls) == 1
+    assert coordinator.unnotified_shifts() == []
+
+
+@pytest.mark.parametrize(
+    ("notify_time", "start", "end", "too_early"),
+    [
+        ("06:30:00", 1, 5, False),
+        ("05:00:00", 1, 5, True),
+        ("05:10:00", 1, 5, True),
+        ("05:15:00", 1, 5, False),
+        ("03:00:00", 1, 5, True),
+        ("06:30:00", 1, 7, True),
+        ("23:30:00", 23, 5, True),
+        ("22:00:00", 23, 5, False),
+        ("07:00", 23, 6, False),
+    ],
+)
+def test_notify_time_must_follow_night(notify_time, start, end, too_early) -> None:
+    from custom_components.base_load.config_flow import notify_too_early
+
+    assert notify_too_early(notify_time, start, end) is too_early
+
+
+def test_shift_keys_older_than_learning_period_are_dropped() -> None:
+    from datetime import date
+
+    from custom_components.base_load.coordinator import _recent_keys
+
+    keys = {"sensor.a|2026-09-01", "sensor.a|2026-11-01", "broken", "sensor.b|x"}
+    assert _recent_keys(keys, date(2026, 10, 1)) == {"sensor.a|2026-11-01"}
+
+
+@pytest.mark.parametrize(
+    ("value", "unit", "watts"),
+    [("1.5", "kW", 1500.0), ("250", "W", 250.0), ("250", None, 250.0), ("0.002", "MW", 2000.0)],
+)
+def test_live_values_are_converted_to_watts(value, unit, watts) -> None:
+    from homeassistant.core import State
+
+    from custom_components.base_load.appliances import ApplianceDetector
+
+    attrs = {"unit_of_measurement": unit} if unit else {}
+    state = State("sensor.source", value, attrs)
+    assert ApplianceDetector._watts(None, "sensor.source", state) == pytest.approx(watts)
+
+
+def test_long_texts_fit_into_a_state() -> None:
+    from custom_components.base_load.describe import fit_state
+
+    assert fit_state("short") == "short"
+    long = ", ".join(f"Steckdose Nummer {i} +12 W" for i in range(30))
+    fitted = fit_state(long)
+    assert len(fitted) == 255
+    assert fitted.endswith("…")
+
+
+async def test_morning_cause_comes_from_the_explanation(hass: HomeAssistant, night) -> None:
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    from custom_components.base_load.morning import async_send_morning
+
+    calls = async_mock_service(hass, "notify", "mobile_app_test")
+    extra = datetime(2026, 11, 3, 0, tzinfo=BERLIN)
+    data = {**ENTRY_DATA, "min_deviation": 30, "notify_service": "notify.mobile_app_test"}
+    entry = await _setup(hass, current_grid=262.0, data=data, extra_since=extra)
+    with (
+        patch(
+            "custom_components.base_load.coordinator.statistics_during_period",
+            side_effect=fake_statistics(262.0, extra_since=extra),
+        ),
+        patch(
+            "custom_components.base_load.coordinator.history.get_significant_states",
+            return_value={},
+        ),
+    ):
+        await async_send_morning(hass, entry)
+    message = calls[0].data["message"]
+    cause = hass.states.get("sensor.base_load_last_night_probable_cause").state
+    assert f"Probable cause: {cause}." in message
+    assert "Nothing unusual" not in message

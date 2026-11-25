@@ -6,12 +6,14 @@ from datetime import datetime, timedelta
 import logging
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.const import UnitOfPower
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
+from homeassistant.util.unit_conversion import PowerConverter
 
 from .const import (
     ACTION_NAME_APPLIANCE,
@@ -142,7 +144,10 @@ class ApplianceDetector:
         if value is None:
             return None
         unit = state.attributes.get("unit_of_measurement")
-        return value * 1000 if unit == "kW" else value
+        # Sources without a device class may report any power unit, or none (W).
+        if unit in PowerConverter.VALID_UNITS and unit != UnitOfPower.WATT:
+            return PowerConverter.convert(value, unit, UnitOfPower.WATT)
+        return value
 
     def combined(self, now: datetime) -> float | None:
         """House load = grid + local sources - excluded loads, from live values."""
